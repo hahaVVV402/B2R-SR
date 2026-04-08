@@ -75,6 +75,29 @@ python test_ClassSR.py -opt options/test/test_ClassSR_RCAN.yml
 ```
 6. The output results will be sorted in `./results`. 
 
+## DART-SR (framework-level dynamic token routing plugin)
+
+This repository also includes a plug-and-play acceleration framework named **DART-SR**
+(`Degradation-Aware Routing Token Plugin`). Unlike patch-level ClassSR routing,
+DART-SR can be attached to a single pretrained backbone (RCAN/CARN/SRResNet) and
+uses window/token-level dynamic skipping with degradation-aware thresholds.
+
+1. Train with frozen backbone and trainable plugin modules:
+```
+cd codes
+python train.py -opt options/train/train_DARTSR_RCAN.yml
+python train.py -opt options/train/train_DARTSR_CARN.yml
+python train.py -opt options/train/train_DARTSR_SRResNet.yml
+```
+
+2. Test with unified framework metrics (`keep_ratio`, `flops_estimated`, `latency_ms`):
+```
+cd codes
+python test.py -opt options/test/test_DARTSR_RCAN.yml
+python test.py -opt options/test/test_DARTSR_CARN.yml
+python test.py -opt options/test/test_DARTSR_SRResNet.yml
+```
+
 
 ## How to train a single branch
 1. Clone this github repo. 

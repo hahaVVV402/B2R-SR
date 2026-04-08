@@ -49,6 +49,9 @@ for test_loader in test_loaders:
     test_results['ssim'] = []
     test_results['psnr_y'] = []
     test_results['ssim_y'] = []
+    test_results['keep_ratio_total'] = []
+    test_results['flops_estimated'] = []
+    test_results['latency_ms'] = []
 
 
 
@@ -73,6 +76,16 @@ for test_loader in test_loaders:
             save_img_path = osp.join(dataset_dir, img_name + '.png')
         util.save_img(sr_img, save_img_path)
 
+        if 'metrics.keep_ratio_total' in visuals:
+            keep_ratio_total = visuals['metrics.keep_ratio_total']
+            flops_estimated = visuals.get('metrics.flops_estimated', 0.0)
+            latency_ms = visuals.get('metrics.latency_ms', 0.0)
+            test_results['keep_ratio_total'].append(keep_ratio_total)
+            test_results['flops_estimated'].append(flops_estimated)
+            test_results['latency_ms'].append(latency_ms)
+            logger.info(
+                '{:20s} - keep_ratio: {:.4f}; flops_est: {:.4f}; latency: {:.3f} ms.'.
+                format(img_name, keep_ratio_total, flops_estimated, latency_ms))
 
 
         if need_GT:
@@ -116,3 +129,10 @@ for test_loader in test_loaders:
             logger.info(
                 '----Y channel, average PSNR/SSIM----\n\tPSNR_Y: {:.6f} dB; SSIM_Y: {:.6f}\n'.
                 format(ave_psnr_y, ave_ssim_y))
+        if test_results['keep_ratio_total']:
+            ave_keep_ratio = sum(test_results['keep_ratio_total']) / len(test_results['keep_ratio_total'])
+            ave_flops_est = sum(test_results['flops_estimated']) / len(test_results['flops_estimated'])
+            ave_latency = sum(test_results['latency_ms']) / len(test_results['latency_ms'])
+            logger.info(
+                '----DART-SR routing metrics----\n\tkeep_ratio: {:.6f}; flops_est: {:.6f}; latency: {:.6f} ms\n'.
+                format(ave_keep_ratio, ave_flops_est, ave_latency))

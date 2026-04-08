@@ -28,6 +28,7 @@ class ClassSR_Model(BaseModel):
         self.scale = int(opt["scale"])
         self.name = opt['name']
         self.which_model = opt['network_G']['which_model_G']
+        self.plugin_metrics = None
 
 
         if opt['dist']:
@@ -120,14 +121,24 @@ class ClassSR_Model(BaseModel):
 
     def optimize_parameters(self, step):
         self.optimizer_G.zero_grad()
-        self.fake_H, self.type = self.netG(self.var_L, self.is_train)
-        #print(self.type)
+        output = self.netG(self.var_L, self.is_train)
+        self.plugin_metrics = None
+        if isinstance(output, tuple) and len(output) == 2 and isinstance(output[1], dict):
+            self.fake_H = output[0]
+            self.type = None
+            self.plugin_metrics = output[1]
+        else:
+            self.fake_H, self.type = output
         l_pix = self.cri_pix(self.fake_H, self.real_H)
-        class_loss=self.class_loss(self.type)
-        average_loss=self.average_loss(self.type)
+        if self.type is not None and hasattr(self, 'class_loss'):
+            class_loss=self.class_loss(self.type)
+            average_loss=self.average_loss(self.type)
+        else:
+            class_loss = self.fake_H.new_tensor(0.0)
+            average_loss = self.fake_H.new_tensor(0.0)
         loss = self.l1w * l_pix + self.class_loss_w * class_loss+self.average_loss_w*average_loss
 
-        if step % self.pf == 0:
+        if self.type is not None and step % self.pf == 0:
            self.print_res(self.type)
 
         loss.backward()
@@ -138,6 +149,9 @@ class ClassSR_Model(BaseModel):
         self.log_dict['class_loss'] = class_loss.item()
         self.log_dict['average_loss'] = average_loss.item()
         self.log_dict['loss'] = loss.item()
+        if self.plugin_metrics is not None:
+            self.log_dict['keep_ratio'] = self.plugin_metrics['keep_ratio_total'].mean().item()
+            self.log_dict['flops_ratio'] = self.plugin_metrics['flops_ratio'].mean().item()
 
     def test(self):
         self.netG.eval()
@@ -152,6 +166,7 @@ class ClassSR_Model(BaseModel):
         psnr_type1 = 0
         psnr_type2 = 0
         psnr_type3 = 0
+        type = None
 
         for LR_img,GT_img in zip(lr_list,gt_list):
 
@@ -168,7 +183,13 @@ class ClassSR_Model(BaseModel):
             img = torch.from_numpy(np.ascontiguousarray(np.transpose(img, (2, 0, 1)))).float()[None, ...].to(
                 self.device)
             with torch.no_grad():
-                srt, type = self.netG(img, False)
+                net_out = self.netG(img, False)
+                if isinstance(net_out, tuple) and len(net_out) == 2 and isinstance(net_out[1], dict):
+                    srt = net_out[0]
+                    type = None
+                    self.plugin_metrics = net_out[1]
+                else:
+                    srt, type = net_out
 
             if self.which_model == 'classSR_3class_rcan':
                 sr_img = util.tensor2img(srt.detach()[0].float().cpu(), out_type=np.uint8, min_max=(0, 255))
@@ -176,28 +197,34 @@ class ClassSR_Model(BaseModel):
                 sr_img = util.tensor2img(srt.detach()[0].float().cpu())
             sr_list.append(sr_img)
 
-            if index == 0:
-                type_res = type
-            else:
-                type_res = torch.cat((type_res, type), 0)
+            if type is not None:
+                if index == 0:
+                    type_res = type
+                else:
+                    type_res = torch.cat((type_res, type), 0)
 
             psnr=util.calculate_psnr(sr_img, GT_img)
-            flag=torch.max(type, 1)[1].data.squeeze()
-            if flag == 0:
-                psnr_type1 += psnr
-            if flag == 1:
-                psnr_type2 += psnr
-            if flag == 2:
-                psnr_type3 += psnr
+            if type is not None:
+                flag=torch.max(type, 1)[1].data.squeeze()
+                if flag == 0:
+                    psnr_type1 += psnr
+                if flag == 1:
+                    psnr_type2 += psnr
+                if flag == 2:
+                    psnr_type3 += psnr
 
             index += 1
 
         self.fake_H = self.combine(sr_list, num_h, num_w, h, w, self.patch_size, self.step)
-        if self.opt['add_mask']:
+        if self.opt['add_mask'] and type is not None:
             self.fake_H_mask = self.combine_addmask(sr_list, num_h, num_w, h, w, self.patch_size, self.step,type_res)
         self.real_H = self.real_H[0:h * self.scale, 0:w * self.scale, :]
-        self.num_res = self.print_res(type_res)
-        self.psnr_res=[psnr_type1,psnr_type2,psnr_type3]
+        if type is not None:
+            self.num_res = self.print_res(type_res)
+            self.psnr_res=[psnr_type1,psnr_type2,psnr_type3]
+        else:
+            self.num_res = [0, 0, 0]
+            self.psnr_res=[0, 0, 0]
 
 
         self.netG.train()
@@ -211,9 +238,14 @@ class ClassSR_Model(BaseModel):
         out_dict['rlt'] = self.fake_H
         out_dict['num_res'] = self.num_res
         out_dict['psnr_res']=self.psnr_res
+        if self.plugin_metrics is not None:
+            out_dict['metrics.keep_ratio_total'] = self.plugin_metrics['keep_ratio_total'].mean().item()
+            out_dict['metrics.keep_ratio_per_stage'] = self.plugin_metrics['keep_ratio_per_stage'].mean(dim=0).detach().float().cpu().tolist()
+            out_dict['metrics.flops_estimated'] = self.plugin_metrics['flops_estimated'].mean().item()
+            out_dict['metrics.latency_ms'] = self.plugin_metrics['latency_ms'].mean().item()
         if need_GT:
             out_dict['GT'] = self.real_H
-        if self.opt['add_mask']:
+        if self.opt['add_mask'] and hasattr(self, 'fake_H_mask'):
             out_dict['rlt_mask']=self.fake_H_mask
         return out_dict
 
@@ -358,5 +390,3 @@ class ClassSR_Model(BaseModel):
                 num2 += 1
 
         return [num0, num1,num2]
-
-

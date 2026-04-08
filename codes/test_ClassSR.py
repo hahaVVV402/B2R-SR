@@ -52,6 +52,9 @@ for test_loader in test_loaders:
     avg_psnr = 0.
     idx = 0
     num_ress = [0, 0, 0]
+    plugin_keep = []
+    plugin_flops = []
+    plugin_latency = []
 
 
     for data in test_loader:
@@ -69,6 +72,11 @@ for test_loader in test_loaders:
 
         num_res = visuals['num_res']
         psnr_res = visuals['psnr_res']
+        has_plugin_metrics = 'metrics.keep_ratio_total' in visuals
+        if has_plugin_metrics:
+            plugin_keep.append(visuals['metrics.keep_ratio_total'])
+            plugin_flops.append(visuals.get('metrics.flops_estimated', 0.0))
+            plugin_latency.append(visuals.get('metrics.latency_ms', 0.0))
 
 
         # save images
@@ -108,14 +116,21 @@ for test_loader in test_loaders:
                 # logger.info(
                 #     '{:.6f}'.
                 #         format(psnr_y))
-                num_ress[0] += num_res[0]
-                num_ress[1] += num_res[1]
-                num_ress[2] += num_res[2]
+                if has_plugin_metrics:
+                    logger.info(
+                        '{0} - keep_ratio: {1:.4f} flops_est: {2:.4f} latency: {3:.3f} ms.'.
+                        format(img_name, visuals['metrics.keep_ratio_total'],
+                               visuals.get('metrics.flops_estimated', 0.0),
+                               visuals.get('metrics.latency_ms', 0.0)))
+                else:
+                    num_ress[0] += num_res[0]
+                    num_ress[1] += num_res[1]
+                    num_ress[2] += num_res[2]
 
-                flops,percent=util.cal_FLOPs(which_model,num_res)
-                logger.info(
-                    '{0} - type1: {1} type2: {2} type3: {3} FLOPs: {4} Percent: {5}.'.
-                        format(img_name, num_res[0], num_res[1],num_res[2],flops,percent))
+                    flops,percent=util.cal_FLOPs(which_model,num_res)
+                    logger.info(
+                        '{0} - type1: {1} type2: {2} type3: {3} FLOPs: {4} Percent: {5}.'.
+                            format(img_name, num_res[0], num_res[1],num_res[2],flops,percent))
 
             else:
                 logger.info('{:20s} - PSNR: {:.6f} dB; SSIM: {:.6f}.'.format(img_name, psnr, ssim))
@@ -124,18 +139,26 @@ for test_loader in test_loaders:
             logger.info(img_name)
 
 
-    if num_ress[0] == 0:
-        num_ress[0] = 1
-    if num_ress[1] == 0:
-        num_ress[1] = 1
-    if num_ress[2] == 0:
-        num_ress[2] = 1
-    logger.info('# Validation # Class num: {0} {1} {2} all:{3}'.format(num_ress[0], num_ress[1], num_ress[2],sum(num_ress)))
+    if not plugin_keep:
+        if num_ress[0] == 0:
+            num_ress[0] = 1
+        if num_ress[1] == 0:
+            num_ress[1] = 1
+        if num_ress[2] == 0:
+            num_ress[2] = 1
+        logger.info('# Validation # Class num: {0} {1} {2} all:{3}'.format(num_ress[0], num_ress[1], num_ress[2],sum(num_ress)))
 
 
     if need_GT:  # metrics
-        flops,percent=util.cal_FLOPs(which_model,num_ress)
-        logger.info('# FLOPs {:.4e} Percent {:.4e}'.format(flops,percent))
+        if plugin_keep:
+            ave_keep = sum(plugin_keep) / len(plugin_keep)
+            ave_flops = sum(plugin_flops) / len(plugin_flops)
+            ave_latency = sum(plugin_latency) / len(plugin_latency)
+            logger.info('# DART-SR keep_ratio {:.4e} flops_est {:.4e} latency {:.4e} ms'.format(
+                ave_keep, ave_flops, ave_latency))
+        else:
+            flops,percent=util.cal_FLOPs(which_model,num_ress)
+            logger.info('# FLOPs {:.4e} Percent {:.4e}'.format(flops,percent))
         # Average PSNR/SSIM results
         ave_psnr = sum(test_results['psnr']) / len(test_results['psnr'])
         #ave_ssim = sum(test_results['ssim']) / len(test_results['ssim'])

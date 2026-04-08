@@ -1,0 +1,44 @@
+#### general settings
+name: test_DARTSR_CARN
+model: sr
+distortion: sr
+scale: 4
+crop_border: ~
+gpu_ids: [0]
+
+#### network structures
+network_G:
+  which_model_G: CARN_M
+  in_nc: 3
+  out_nc: 3
+  nf: 36
+  scale: 4
+  group: 4
+  plugin:
+    enable: true
+    route_window: 8
+    tau0: 0.5
+    alpha: 0.35
+    var_weight: 0.2
+    hard_train_after: 10000
+    hard_infer: true
+    use_ste: true
+    target_keep_min: 0.45
+    target_keep_max: 0.95
+    static_flops_ratio: 0.25
+    base_flops: 0.38
+    freeze_backbone: true
+    deg_estimator:
+      enable: true
+      hidden_dim: 32
+
+datasets:
+  test1:
+    name: set5
+    mode: LQGT
+    dataroot_GT: /data0/xtkong/ClassSR/datasets/Set5/HR
+    dataroot_LQ: /data0/xtkong/ClassSR/datasets/Set5/LR
+
+#### path
+path:
+  pretrain_model_G: /data0/xtkong/ClassSR-github/experiments/pre_trained_models/CARN_branch1.pth

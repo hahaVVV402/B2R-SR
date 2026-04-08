@@ -7,12 +7,18 @@ import models.archs.classSR_srresnet_arch as classSR_srresnet_arch
 import models.archs.RCAN_arch as RCAN_arch
 import models.archs.FSRCNN_arch as FSRCNN_arch
 import models.archs.CARN_arch as CARN_arch
+import models.archs.dart_sr_plugin_arch as dart_sr_plugin_arch
 
 
 # Generator
 def define_G(opt):
     opt_net = opt['network_G']
     which_model = opt_net['which_model_G']
+    plugin_opt = opt_net.get('plugin', None)
+    plugin_enable = bool(plugin_opt and plugin_opt.get('enable', False))
+
+    if plugin_enable:
+        return dart_sr_plugin_arch.build_dartsr_backbone(opt_net)
 
     # image restoration
     if which_model == 'MSRResNet':
