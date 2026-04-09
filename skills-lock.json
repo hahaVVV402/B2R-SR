@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "skills": {
+    "literature-review": {
+      "source": "K-Dense-AI/claude-scientific-skills",
+      "sourceType": "github",
+      "computedHash": "97e418aeba9389335b35a46ef2c05d49f8f5bb3d6036c0bf7b68a7659df6812a"
+    },
+    "matplotlib": {
+      "source": "K-Dense-AI/claude-scientific-skills",
+      "sourceType": "github",
+      "computedHash": "865d42f91864271b2099b3303ed837fbf91f4ab671f0269ab82a32dcf6c016fb"
+    },
+    "paper-lookup": {
+      "source": "K-Dense-AI/claude-scientific-skills",
+      "sourceType": "github",
+      "computedHash": "54d5b222f32fc53d09234d429c147b895ebd4f1950e0d3e0cd4014fc597e40ae"
+    },
+    "pytorch-lightning": {
+      "source": "K-Dense-AI/claude-scientific-skills",
+      "sourceType": "github",
+      "computedHash": "8753b2a85f2822c4a13a641c458176971c32a500f12fee521a682dc8c742cb33"
+    },
+    "scientific-schematics": {
+      "source": "K-Dense-AI/claude-scientific-skills",
+      "sourceType": "github",
+      "computedHash": "14a35f07f75e8fb38608e50ac16a6932fb8a0c6d688c4d158838f68911d9d929"
+    },
+    "scientific-visualization": {
+      "source": "K-Dense-AI/claude-scientific-skills",
+      "sourceType": "github",
+      "computedHash": "51d5edb94e1d83855002ddf78eddc53f322e00ba7004ea7d054ae1198a548958"
+    },
+    "scientific-writing": {
+      "source": "K-Dense-AI/claude-scientific-skills",
+      "sourceType": "github",
+      "computedHash": "7c8528ee48f0455c56d007d8ae38c24c6318ed6234ab2ff2a4065a4482b1eeda"
+    },
+    "transformers": {
+      "source": "K-Dense-AI/claude-scientific-skills",
+      "sourceType": "github",
+      "computedHash": "892c0a271afd80a0504595b67e30b422314969427204b38f6b680fd12be33fbe"
+    }
+  }
+}
