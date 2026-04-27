@@ -1,0 +1,89 @@
+#### Smoke test config - minimal training to verify pipeline
+name: DARTSR_RCAN_smoke_test
+use_tb_logger: false  # 关闭 tensorboard 加速
+model: sr
+distortion: sr
+scale: 4
+gpu_ids: [0]
+
+#### network structures
+network_G:
+  which_model_G: RCAN
+  n_resblocks: 4  # 减少到 4 个 block
+  n_feats: 16     # 减少特征数
+  n_resgroups: 2  # 减少到 2 组
+  res_scale: 1
+  n_colors: 3
+  rgb_range: 255
+  scale: 4
+  reduction: 16
+  plugin:
+    enable: true
+    route_window: 8
+    tau0: 0.5
+    alpha: 0.35
+    var_weight: 0.2
+    hard_train_after: 50  # 快速切换到 hard routing
+    hard_infer: true
+    use_ste: true
+    target_keep_min: 0.45
+    target_keep_max: 0.95
+    static_flops_ratio: 0.25
+    base_flops: 10.33
+    freeze_backbone: false  # 不冻结，测试完整训练
+    deg_estimator:
+      enable: true
+      hidden_dim: 16  # 减小隐藏层
+
+#### datasets
+datasets:
+  train:
+    name: DIV2K
+    mode: LQGT_rcan
+    dataroot_GT: /path/to/DIV2K/HR
+    dataroot_LQ: /path/to/DIV2K/LR_bicubic/X4
+    use_shuffle: true
+    n_workers: 2  # 减少 worker
+    batch_size: 2  # 小 batch
+    GT_size: 48   # 小 patch
+    use_flip: true
+    use_rot: true
+    color: RGB
+  val:
+    name: Set5
+    mode: LQGT_rcan
+    dataroot_GT: /path/to/Set5/HR
+    dataroot_LQ: /path/to/Set5/LR_bicubic/X4
+
+#### path
+path:
+  pretrain_model_G: ~  # 不加载预训练，从头训练测试
+  strict_load: true
+  resume_state: ~
+
+#### training settings
+train:
+  lr_G: !!float 1e-4
+  lr_scheme: MultiStepLR
+  lr_steps: [50, 100]
+  lr_gamma: 0.5
+  beta1: 0.9
+  beta2: 0.99
+  niter: 200  # 只训练 200 步
+  warmup_iter: -1
+
+  pixel_criterion: l1
+  pixel_weight: 1.0
+  plugin_loss:
+    budget_weight: 0.5
+    sparse_weight: 0.1
+    tv_weight: 0.05
+    deg_weight: 0.05
+
+  manual_seed: 10
+  val_freq: !!float 100  # 每 100 步验证一次
+
+#### logger
+logger:
+  print_freq: 10  # 每 10 步打印
+  save_checkpoint_freq: !!float 100
