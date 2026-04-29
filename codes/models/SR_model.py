@@ -103,11 +103,13 @@ class SRModel(BaseModel):
         if self.plugin_info is not None:
             l_budget = self._plugin_loss_term('loss_budget', 'budget_weight')
             l_sparse = self._plugin_loss_term('loss_sparse', 'sparse_weight')
+            l_benefit = self._plugin_loss_term('loss_benefit', 'benefit_weight')
             l_tv = self._plugin_loss_term('loss_tv', 'tv_weight')
             l_deg = self._plugin_loss_term('loss_deg', 'deg_weight')
-            loss_total = loss_total + l_budget + l_sparse + l_tv + l_deg
+            loss_total = loss_total + l_budget + l_sparse + l_benefit + l_tv + l_deg
             self.log_dict['l_budget'] = l_budget.item()
             self.log_dict['l_sparse'] = l_sparse.item()
+            self.log_dict['l_benefit'] = l_benefit.item()
             self.log_dict['l_tv'] = l_tv.item()
             self.log_dict['l_deg'] = l_deg.item()
 
@@ -121,6 +123,7 @@ class SRModel(BaseModel):
             self.log_dict['keep_ratio'] = self._plugin_metric_mean('keep_ratio_total')
             self.log_dict['flops_ratio'] = self._plugin_metric_mean('flops_ratio')
             self.log_dict['deg_score'] = self._plugin_metric_mean('degradation_score')
+            self.log_dict['complexity_score'] = self._plugin_metric_mean('complexity_score')
 
     def test(self):
         self.netG.eval()
@@ -140,9 +143,11 @@ class SRModel(BaseModel):
         if self.plugin_info is not None:
             out_dict['metrics.keep_ratio_total'] = self._plugin_metric_mean('keep_ratio_total')
             out_dict['metrics.keep_ratio_per_stage'] = self._plugin_metric_vector('keep_ratio_per_stage')
+            out_dict['metrics.target_keep_per_stage'] = self._plugin_metric_vector('target_keep_per_stage')
             out_dict['metrics.flops_ratio'] = self._plugin_metric_mean('flops_ratio')
             out_dict['metrics.flops_estimated'] = self._plugin_metric_mean('flops_estimated')
             out_dict['metrics.degradation_score'] = self._plugin_metric_mean('degradation_score')
+            out_dict['metrics.complexity_score'] = self._plugin_metric_mean('complexity_score')
             out_dict['metrics.latency_ms'] = self._plugin_metric_mean('latency_ms')
         if need_GT:
             out_dict['GT'] = self.real_H.detach()[0].float().cpu()
@@ -211,6 +216,8 @@ class SRModel(BaseModel):
             has_plugin_state = any(
                 k.startswith('router_heads.') or
                 k.startswith('deg_estimator.') or
+                k.startswith('budget_allocator.') or
+                k.startswith('cheap_adapters.') or
                 k.startswith('backbone.') or
                 k.startswith('stage_weights')
                 for k in keys

@@ -34,6 +34,49 @@ class DegradationEstimator(nn.Module):
         return torch.sigmoid(self.head(feat))
 
 
+class BudgetAllocator(nn.Module):
+    """Stage-wise keep-ratio allocator conditioned on image-level context."""
+
+    def __init__(self, num_stages, hidden_dim=32, delta_scale=0.15):
+        super(BudgetAllocator, self).__init__()
+        self.delta_scale = float(delta_scale)
+        self.mlp = nn.Sequential(
+            nn.Linear(3, hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, num_stages)
+        )
+        nn.init.zeros_(self.mlp[-1].weight)
+        nn.init.zeros_(self.mlp[-1].bias)
+
+    def forward(self, degradation_score, complexity_score, user_budget, min_keep, max_keep):
+        budget = torch.full_like(degradation_score, float(user_budget))
+        ctx = torch.stack([degradation_score, complexity_score, budget], dim=1)
+        learned_delta = self.delta_scale * torch.tanh(self.mlp(ctx))
+        adaptive_base = min_keep + (max_keep - min_keep) * (0.5 * degradation_score + 0.5 * complexity_score)
+        base = 0.5 * budget.unsqueeze(1) + 0.5 * adaptive_base.unsqueeze(1)
+        return torch.clamp(base + learned_delta, min_keep, max_keep)
+
+
+class CheapAdapter(nn.Module):
+    """Very small residual path for low-benefit windows."""
+
+    def __init__(self, channels, hidden_scale=0.25):
+        super(CheapAdapter, self).__init__()
+        hidden = max(4, int(channels * hidden_scale))
+        self.body = nn.Sequential(
+            nn.Conv2d(channels, channels, 3, 1, 1, groups=channels, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(channels, hidden, 1, 1, 0, bias=True),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(hidden, channels, 1, 1, 0, bias=True)
+        )
+        nn.init.zeros_(self.body[-1].weight)
+        nn.init.zeros_(self.body[-1].bias)
+
+    def forward(self, x):
+        return x + self.body(x)
+
+
 class DARTSRPlugin(nn.Module):
     """Backbone-agnostic token routing plugin for block-based SR models."""
 
@@ -50,6 +93,9 @@ class DARTSRPlugin(nn.Module):
         self.hard_train_after = int(_get_opt(plugin_opt, 'hard_train_after', 20000))
         self.hard_infer = bool(_get_opt(plugin_opt, 'hard_infer', True))
         self.use_ste = bool(_get_opt(plugin_opt, 'use_ste', True))
+        self.routing_mode = str(_get_opt(plugin_opt, 'routing_mode', 'threshold'))
+        self.sync_latency = bool(_get_opt(plugin_opt, 'sync_latency', False))
+        self.benefit_teacher_mode = str(_get_opt(plugin_opt, 'benefit_teacher_mode', 'warmup'))
 
         self.target_keep_min = float(_get_opt(plugin_opt, 'target_keep_min', 0.45))
         self.target_keep_max = float(_get_opt(plugin_opt, 'target_keep_max', 0.95))
@@ -72,6 +118,26 @@ class DARTSRPlugin(nn.Module):
 
         self.stage_modules, stage_channels = self._collect_stages()
         self.router_heads = nn.ModuleList([nn.Conv2d(ch, 1, 1, 1, 0, bias=True) for ch in stage_channels])
+
+        budget_opt = _get_opt(plugin_opt, 'budget_allocator', {})
+        self.use_budget_allocator = bool(_get_opt(budget_opt, 'enable', False))
+        self.user_budget = float(_get_opt(budget_opt, 'user_budget', 0.7))
+        self.budget_allocator = BudgetAllocator(
+            num_stages=len(self.stage_modules),
+            hidden_dim=int(_get_opt(budget_opt, 'hidden_dim', 32)),
+            delta_scale=float(_get_opt(budget_opt, 'delta_scale', 0.15))
+        )
+        if not self.use_budget_allocator:
+            for p in self.budget_allocator.parameters():
+                p.requires_grad = False
+
+        cheap_opt = _get_opt(plugin_opt, 'cheap_path', {})
+        self.use_cheap_path = bool(_get_opt(cheap_opt, 'enable', False))
+        adapter_scale = float(_get_opt(cheap_opt, 'hidden_scale', 0.25))
+        self.cheap_adapters = nn.ModuleList([CheapAdapter(ch, adapter_scale) for ch in stage_channels])
+        if not self.use_cheap_path:
+            for p in self.cheap_adapters.parameters():
+                p.requires_grad = False
 
         stage_weights = _get_opt(plugin_opt, 'stage_weights', None)
         if stage_weights is None or len(stage_weights) != len(self.stage_modules):
@@ -112,6 +178,35 @@ class DARTSRPlugin(nn.Module):
         kernel = torch.tensor([[0, -1, 0], [-1, 4, -1], [0, -1, 0]], dtype=dtype, device=device)
         return kernel.view(1, 1, 3, 3)
 
+    def _normalize_per_image(self, value):
+        v_min = value.min(dim=1, keepdim=True)[0]
+        v_max = value.max(dim=1, keepdim=True)[0]
+        return (value - v_min) / (v_max - v_min + 1e-6)
+
+    def _image_complexity_score(self, x):
+        gray = x.mean(dim=1, keepdim=True)
+        lap = F.conv2d(gray, self._lap_kernel(x.device, x.dtype), padding=1)
+        hf = lap.abs().flatten(1).mean(1)
+        base = gray.abs().flatten(1).mean(1) + 1e-6
+        ratio = hf / base
+        if ratio.numel() > 1:
+            min_v = ratio.min()
+            max_v = ratio.max()
+            return (ratio - min_v) / (max_v - min_v + 1e-6)
+        return ratio / (ratio + 1.0)
+
+    def _target_keep_per_stage(self, degradation_score, complexity_score):
+        if self.routing_mode == 'benefit_topk' and self.use_budget_allocator:
+            return self.budget_allocator(
+                degradation_score,
+                complexity_score,
+                self.user_budget,
+                self.target_keep_min,
+                self.target_keep_max
+            )
+        target = self.target_keep_min + (self.target_keep_max - self.target_keep_min) * degradation_score
+        return target.unsqueeze(1).expand(-1, len(self.stage_modules))
+
     def _window_partition(self, x):
         b, c, h, w = x.size()
         ws = self.route_window
@@ -140,7 +235,18 @@ class DARTSRPlugin(nn.Module):
         mask_px = mask.repeat_interleave(ws, dim=1).repeat_interleave(ws, dim=2)
         return mask_px[:, :h, :w].unsqueeze(1)
 
-    def _route_mask(self, feat, stage_idx, degradation_score, training_hard):
+    def _topk_mask(self, score, keep_ratio):
+        b, num_wins = score.size()
+        mask = torch.zeros_like(score)
+        keep_ratio = torch.clamp(keep_ratio, 0.0, 1.0)
+        for i in range(b):
+            k = int(torch.ceil(keep_ratio[i] * num_wins).item())
+            k = max(1, min(num_wins, k))
+            top_idx = torch.topk(score[i], k, dim=0)[1]
+            mask[i, top_idx] = 1.0
+        return mask
+
+    def _route_mask(self, feat, stage_idx, degradation_score, training_hard, target_keep_stage=None):
         windows, meta = self._window_partition(feat)
         b, num_wins = windows.size(0), windows.size(1)
         h, w, hp, wp, nh, nw, _, _ = meta
@@ -155,32 +261,72 @@ class DARTSRPlugin(nn.Module):
         var = windows.var(dim=(2, 3, 4), unbiased=False)
         var = (var - var.mean(dim=1, keepdim=True)) / (var.std(dim=1, keepdim=True) + 1e-6)
 
-        tau = self.tau0 + self.alpha * degradation_score
-        logits = router_logits + self.var_weight * var - tau
-        prob = torch.sigmoid(logits)
-
-        if self.training:
-            if training_hard and self.use_ste:
-                hard = (prob >= 0.5).float()
-                mask = hard + prob - prob.detach()
-            elif training_hard:
-                mask = (prob >= 0.5).float()
-            else:
-                mask = prob
+        if self.routing_mode == 'benefit_topk':
+            logits = router_logits + self.var_weight * var
+            prob = torch.sigmoid(logits)
         else:
-            if self.hard_infer:
-                mask = (prob >= 0.5).float()
+            tau = self.tau0 + self.alpha * degradation_score
+            logits = router_logits + self.var_weight * var - tau.unsqueeze(1)
+            prob = torch.sigmoid(logits)
+
+        if self.routing_mode == 'benefit_topk' and target_keep_stage is not None:
+            if self.training:
+                if not training_hard:
+                    mask = prob
+                elif self.use_ste:
+                    hard = self._topk_mask(logits, target_keep_stage)
+                    mask = hard + prob - prob.detach()
+                else:
+                    hard = self._topk_mask(logits, target_keep_stage)
+                    mask = hard
             else:
-                mask = prob
+                hard = self._topk_mask(logits, target_keep_stage)
+                mask = hard if self.hard_infer else prob
+        else:
+            if self.training:
+                if training_hard and self.use_ste:
+                    hard = (prob >= 0.5).float()
+                    mask = hard + prob - prob.detach()
+                elif training_hard:
+                    mask = (prob >= 0.5).float()
+                else:
+                    mask = prob
+            else:
+                if self.hard_infer:
+                    mask = (prob >= 0.5).float()
+                else:
+                    mask = prob
 
-        return mask, prob, meta
+        return mask, prob, meta, logits
 
-    def _gated_forward(self, x, stage_module, mask, meta, training_hard):
-        if self.training and not training_hard:
+    def _benefit_target_from_delta(self, delta):
+        windows, _ = self._window_partition(delta.abs())
+        benefit = windows.mean(dim=(2, 3, 4))
+        return self._normalize_per_image(benefit)
+
+    def _should_compute_benefit_target(self, training_hard):
+        if not self.training or self.routing_mode != 'benefit_topk':
+            return False
+        if self.benefit_teacher_mode == 'always':
+            return True
+        if self.benefit_teacher_mode == 'warmup':
+            return not training_hard
+        return False
+
+    def _gated_forward(self, x, stage_module, mask, meta, training_hard, stage_idx):
+        adapter = self.cheap_adapters[stage_idx] if self.use_cheap_path else None
+        compute_benefit_target = self._should_compute_benefit_target(training_hard)
+
+        if self.training and (not training_hard or compute_benefit_target):
             # warm-up with dense compute, mask only controls residual blending
             stage_out = stage_module(x)
-            mask_px = self._upsample_mask(mask, meta)
-            return x + mask_px * (stage_out - x)
+            benefit_target = self._benefit_target_from_delta(stage_out - x) if compute_benefit_target else None
+            if not training_hard:
+                skip_out = adapter(x) if adapter is not None else x
+                mask_px = self._upsample_mask(mask, meta)
+                return skip_out + mask_px * (stage_out - skip_out), benefit_target
+        else:
+            benefit_target = None
 
         windows, _ = self._window_partition(x)
         b, num_wins, c, ws, _ = windows.size()
@@ -188,10 +334,14 @@ class DARTSRPlugin(nn.Module):
         out_windows = windows_flat.clone()
 
         active = (mask >= 0.5).view(-1)
+        if adapter is not None:
+            inactive = ~active
+            if inactive.any():
+                out_windows[inactive] = adapter(windows_flat[inactive])
         if active.any():
             out_windows[active] = stage_module(windows_flat[active])
         out_windows = out_windows.view(b, num_wins, c, ws, ws)
-        return self._window_merge(out_windows, meta)
+        return self._window_merge(out_windows, meta), benefit_target
 
     def _estimate_flops(self, keep_ratio_per_stage):
         # keep_ratio_per_stage: [B, G]
@@ -204,7 +354,7 @@ class DARTSRPlugin(nn.Module):
             flops_est = flops_ratio
         return flops_ratio, flops_est
 
-    def _forward_rcan(self, x, degradation_score, training_hard):
+    def _forward_rcan(self, x, degradation_score, training_hard, target_keep_per_stage):
         x = self.backbone.sub_mean(x)
         x = self.backbone.head(x)
 
@@ -212,22 +362,28 @@ class DARTSRPlugin(nn.Module):
         soft_keep = []
         hard_keep = []
         mask_maps = []
+        benefit_probs = []
+        benefit_targets = []
         for idx, stage_module in enumerate(self.stage_modules):
             feat = res
-            mask, prob, meta = self._route_mask(feat, idx, degradation_score, training_hard)
-            res = self._gated_forward(res, stage_module, mask, meta, training_hard)
+            mask, prob, meta, _ = self._route_mask(
+                feat, idx, degradation_score, training_hard, target_keep_per_stage[:, idx])
+            res, benefit_target = self._gated_forward(res, stage_module, mask, meta, training_hard, idx)
             soft_keep.append(prob.mean(dim=1))
             hard_keep.append((mask >= 0.5).float().mean(dim=1))
             h, w, _, _, nh, nw, _, _ = meta
             mask_maps.append(prob.view(prob.size(0), nh, nw))
+            benefit_probs.append(prob)
+            if benefit_target is not None:
+                benefit_targets.append((prob, benefit_target))
 
         res = self.backbone.body[-1](res)
         res += x
         out = self.backbone.tail(res)
         out = self.backbone.add_mean(out)
-        return out, soft_keep, hard_keep, mask_maps
+        return out, soft_keep, hard_keep, mask_maps, benefit_probs, benefit_targets
 
-    def _forward_carn(self, x, degradation_score, training_hard):
+    def _forward_carn(self, x, degradation_score, training_hard, target_keep_per_stage):
         x = self.backbone.sub_mean(x)
         x = self.backbone.entry(x)
         c0 = o0 = x
@@ -235,49 +391,69 @@ class DARTSRPlugin(nn.Module):
         soft_keep = []
         hard_keep = []
         mask_maps = []
+        benefit_probs = []
+        benefit_targets = []
 
-        mask1, prob1, meta1 = self._route_mask(o0, 0, degradation_score, training_hard)
-        b1 = self._gated_forward(o0, self.backbone.b1, mask1, meta1, training_hard)
+        mask1, prob1, meta1, _ = self._route_mask(
+            o0, 0, degradation_score, training_hard, target_keep_per_stage[:, 0])
+        b1, benefit_target = self._gated_forward(o0, self.backbone.b1, mask1, meta1, training_hard, 0)
         c1 = torch.cat([c0, b1], dim=1)
         o1 = self.backbone.c1(c1)
         soft_keep.append(prob1.mean(dim=1))
         hard_keep.append((mask1 >= 0.5).float().mean(dim=1))
         mask_maps.append(prob1.view(prob1.size(0), meta1[4], meta1[5]))
+        benefit_probs.append(prob1)
+        if benefit_target is not None:
+            benefit_targets.append((prob1, benefit_target))
 
-        mask2, prob2, meta2 = self._route_mask(o1, 1, degradation_score, training_hard)
-        b2 = self._gated_forward(o1, self.backbone.b2, mask2, meta2, training_hard)
+        mask2, prob2, meta2, _ = self._route_mask(
+            o1, 1, degradation_score, training_hard, target_keep_per_stage[:, 1])
+        b2, benefit_target = self._gated_forward(o1, self.backbone.b2, mask2, meta2, training_hard, 1)
         c2 = torch.cat([c1, b2], dim=1)
         o2 = self.backbone.c2(c2)
         soft_keep.append(prob2.mean(dim=1))
         hard_keep.append((mask2 >= 0.5).float().mean(dim=1))
         mask_maps.append(prob2.view(prob2.size(0), meta2[4], meta2[5]))
+        benefit_probs.append(prob2)
+        if benefit_target is not None:
+            benefit_targets.append((prob2, benefit_target))
 
-        mask3, prob3, meta3 = self._route_mask(o2, 2, degradation_score, training_hard)
-        b3 = self._gated_forward(o2, self.backbone.b3, mask3, meta3, training_hard)
+        mask3, prob3, meta3, _ = self._route_mask(
+            o2, 2, degradation_score, training_hard, target_keep_per_stage[:, 2])
+        b3, benefit_target = self._gated_forward(o2, self.backbone.b3, mask3, meta3, training_hard, 2)
         c3 = torch.cat([c2, b3], dim=1)
         o3 = self.backbone.c3(c3)
         soft_keep.append(prob3.mean(dim=1))
         hard_keep.append((mask3 >= 0.5).float().mean(dim=1))
         mask_maps.append(prob3.view(prob3.size(0), meta3[4], meta3[5]))
+        benefit_probs.append(prob3)
+        if benefit_target is not None:
+            benefit_targets.append((prob3, benefit_target))
 
         out = self.backbone.upsample(o3, scale=self.backbone.scale)
         out = self.backbone.exit(out)
         out = self.backbone.add_mean(out)
-        return out, soft_keep, hard_keep, mask_maps
+        return out, soft_keep, hard_keep, mask_maps, benefit_probs, benefit_targets
 
-    def _forward_srresnet(self, x, degradation_score, training_hard):
+    def _forward_srresnet(self, x, degradation_score, training_hard, target_keep_per_stage):
         fea = self.backbone.lrelu(self.backbone.conv_first(x))
         out = fea
 
         soft_keep = []
         hard_keep = []
         mask_maps = []
+        benefit_probs = []
+        benefit_targets = []
         for idx, stage_module in enumerate(self.stage_modules):
-            mask, prob, meta = self._route_mask(out, idx, degradation_score, training_hard)
-            out = self._gated_forward(out, stage_module, mask, meta, training_hard)
+            mask, prob, meta, _ = self._route_mask(
+                out, idx, degradation_score, training_hard, target_keep_per_stage[:, idx])
+            out, benefit_target = self._gated_forward(out, stage_module, mask, meta, training_hard, idx)
             soft_keep.append(prob.mean(dim=1))
             hard_keep.append((mask >= 0.5).float().mean(dim=1))
             mask_maps.append(prob.view(prob.size(0), meta[4], meta[5]))
+            benefit_probs.append(prob)
+            if benefit_target is not None:
+                benefit_targets.append((prob, benefit_target))
 
         if self.backbone.upscale == 4:
             out = self.backbone.lrelu(self.backbone.pixel_shuffle(self.backbone.upconv1(out)))
@@ -288,9 +464,11 @@ class DARTSRPlugin(nn.Module):
         out = self.backbone.conv_last(self.backbone.lrelu(self.backbone.HRconv(out)))
         base = F.interpolate(x, scale_factor=self.backbone.upscale, mode='bilinear', align_corners=False)
         out += base
-        return out, soft_keep, hard_keep, mask_maps
+        return out, soft_keep, hard_keep, mask_maps, benefit_probs, benefit_targets
 
     def forward(self, x):
+        if self.sync_latency and x.is_cuda:
+            torch.cuda.synchronize(x.device)
         t0 = time.time()
         training_hard = self.current_iter >= self.hard_train_after if self.training else self.hard_infer
 
@@ -299,12 +477,18 @@ class DARTSRPlugin(nn.Module):
         else:
             degradation_score = torch.full((x.size(0),), 0.5, device=x.device, dtype=x.dtype)
 
+        complexity_score = self._image_complexity_score(x)
+        target_keep_per_stage = self._target_keep_per_stage(degradation_score, complexity_score)
+
         if self.backbone_type == 'RCAN':
-            out, soft_keep, hard_keep, mask_maps = self._forward_rcan(x, degradation_score, training_hard)
+            out, soft_keep, hard_keep, mask_maps, benefit_probs, benefit_targets = self._forward_rcan(
+                x, degradation_score, training_hard, target_keep_per_stage)
         elif self.backbone_type == 'CARN_M':
-            out, soft_keep, hard_keep, mask_maps = self._forward_carn(x, degradation_score, training_hard)
+            out, soft_keep, hard_keep, mask_maps, benefit_probs, benefit_targets = self._forward_carn(
+                x, degradation_score, training_hard, target_keep_per_stage)
         elif self.backbone_type == 'MSRResNet':
-            out, soft_keep, hard_keep, mask_maps = self._forward_srresnet(x, degradation_score, training_hard)
+            out, soft_keep, hard_keep, mask_maps, benefit_probs, benefit_targets = self._forward_srresnet(
+                x, degradation_score, training_hard, target_keep_per_stage)
         else:
             raise NotImplementedError('Unsupported backbone type: {}'.format(self.backbone_type))
 
@@ -314,9 +498,19 @@ class DARTSRPlugin(nn.Module):
         keep_ratio_total = keep_for_metrics.mean(dim=1)
         flops_ratio, flops_estimated = self._estimate_flops(keep_for_metrics)
 
-        target_keep = self.target_keep_min + (self.target_keep_max - self.target_keep_min) * degradation_score
-        loss_budget = (soft_keep_tensor.mean(dim=1) - target_keep).pow(2).mean()
+        loss_budget = (soft_keep_tensor - target_keep_per_stage.detach()).pow(2).mean()
+        if self.routing_mode == 'benefit_topk' and self.use_budget_allocator:
+            budget_ref = torch.full_like(degradation_score, self.user_budget)
+            loss_budget = loss_budget + 0.25 * (target_keep_per_stage.mean(dim=1) - budget_ref).pow(2).mean()
         loss_sparse = soft_keep_tensor.mean()
+
+        if len(benefit_targets) > 0:
+            benefit_losses = []
+            for benefit_prob, benefit_target in benefit_targets:
+                benefit_losses.append(F.mse_loss(benefit_prob, benefit_target.detach()))
+            loss_benefit = torch.stack(benefit_losses).mean()
+        else:
+            loss_benefit = out.new_tensor(0.0)
 
         tv_losses = []
         for p in mask_maps:
@@ -334,6 +528,8 @@ class DARTSRPlugin(nn.Module):
         else:
             loss_deg = out.new_tensor(0.0)
 
+        if self.sync_latency and x.is_cuda:
+            torch.cuda.synchronize(x.device)
         latency_ms = out.new_tensor([(time.time() - t0) * 1000.0])
         plugin_info = {
             'keep_ratio_total': keep_ratio_total,
@@ -341,9 +537,12 @@ class DARTSRPlugin(nn.Module):
             'flops_ratio': flops_ratio,
             'flops_estimated': flops_estimated,
             'degradation_score': degradation_score,
+            'complexity_score': complexity_score,
+            'target_keep_per_stage': target_keep_per_stage,
             'latency_ms': latency_ms,
             'loss_budget': loss_budget.unsqueeze(0),
             'loss_sparse': loss_sparse.unsqueeze(0),
+            'loss_benefit': loss_benefit.unsqueeze(0),
             'loss_tv': loss_tv.unsqueeze(0),
             'loss_deg': loss_deg.unsqueeze(0)
         }
