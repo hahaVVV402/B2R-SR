@@ -258,9 +258,30 @@ tmux attach -t b2rsr-x4-smoke
 
 ---
 
-## 6. 正式训练
+## 6. RTX 4090 训练几何基准
 
-短测试通过后无需修改或恢复 YAML。正式 X4 配置独立保存在：
+X4 下 `GT_size: 96` 只产生 24×24 的 LQ patch，并且每张图只有 9 个 8×8 路由窗口，不能仅沿用 ClassSR 参数。正式训练前运行独立 GPU 基准：
+
+```bash
+cd /home/featurize/work/B2R-SR/codes
+python benchmark_b2rsr_training.py --phase soft
+```
+
+默认比较 `GT96×batch16/32`、`GT128×batch16` 和 `GT192×batch8/12/16`，每组 warmup 20 steps、计时 100 steps，不读取验证集也不保存 checkpoint。输出包括 step 时间、images/s、LR Mpix/s 和 CUDA 峰值显存。
+
+选择保留显存在 22GiB 内、吞吐距离最佳值不超过 5%、且每图至少有 36 个路由窗口的配置。然后用同一候选测试 hard-routing：
+
+```bash
+python benchmark_b2rsr_training.py --phase hard --cases 192x8,192x12,192x16
+```
+
+最终 batch 和 GT size 必须依据这台 4090 的实测结果确定；正式方法与 baseline 还应保持相同的数据/像素预算。
+
+---
+
+## 7. 正式训练
+
+性能基准和 batch-4 smoke test 通过后，正式 X4 配置保存在：
 
 ```text
 codes/options/train/train_B2RSR_RCAN_X4.yml
@@ -303,7 +324,7 @@ tensorboard --logdir experiments --host 127.0.0.1 --port 6006
 
 ---
 
-## 7. 最终执行顺序
+## 8. 最终执行顺序
 
 ```text
 RTX 3060
@@ -322,7 +343,7 @@ RTX 4090
   7. 在同一实例继续正式训练
 ```
 
-## 8. 关键原则
+## 9. 关键原则
 
 - 不要把 100GB DF2K 放到 `/home/featurize/work`；
 - 不要在便宜实例完整解压后再换 GPU；
