@@ -51,7 +51,7 @@ network_G:
 #### datasets
 datasets:
   train:
-    name: DIV2K
+    name: DF2K
     mode: LQGT_rcan
     dataroot_GT: /home/featurize/data/DF2K/DF2K_train_HR_sub
     dataroot_LQ: /home/featurize/data/DF2K/DF2K_train_LR_bicubic/X3_sub
@@ -63,7 +63,7 @@ datasets:
     use_rot: true
     color: RGB
   val:
-    name: Set5
+    name: DIV2K_valid
     mode: LQGT_rcan
     dataroot_GT: /home/featurize/data/DIV2K_valid_HR
     dataroot_LQ: /home/featurize/data/DIV2K_valid_LR_bicubic/X3
