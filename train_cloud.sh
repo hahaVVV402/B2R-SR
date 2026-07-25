@@ -5,7 +5,6 @@ SCALE="${1:-4}"
 MODE="${2:-train}"
 [[ "$SCALE" =~ ^(2|3|4)$ ]] || { echo "用法: $0 2|3|4 [train|smoke]" >&2; exit 1; }
 [[ "$MODE" =~ ^(train|smoke)$ ]] || { echo "用法: $0 2|3|4 [train|smoke]" >&2; exit 1; }
-[[ "$MODE" != "smoke" || "$SCALE" == "4" ]] || { echo "smoke 配置目前仅支持 X4。" >&2; exit 1; }
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
 SUFFIX=""

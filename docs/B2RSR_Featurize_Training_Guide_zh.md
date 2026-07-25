@@ -223,7 +223,7 @@ experiments/pre_trained_models/RCAN_BIX4.pt
 codes/options/train/train_B2RSR_RCAN_X4_smoke.yml
 ```
 
-它使用 `batch_size: 4` 训练 20 steps，并在第 10、20 step 验证和保存，不会修改或覆盖正式配置。B2R-SR 的退化代理目标使用 batch 内归一化，因此不能使用会使目标恒为 1 的 `batch_size: 1`。
+它使用与正式训练一致的 `GT_size: 192`、`batch_size: 48` 训练 20 steps，并在第 10、20 step 验证和保存，不会修改或覆盖正式配置。B2R-SR 的退化代理目标使用 batch 内归一化，因此不能使用会使目标恒为 1 的 `batch_size: 1`。
 
 在 tmux 中运行：
 
@@ -277,17 +277,34 @@ python benchmark_b2rsr_training.py --phase hard --cases 192x8,192x12,192x16
 
 最终 batch 和 GT size 必须依据这台 4090 的实测结果确定；正式方法与 baseline 还应保持相同的数据/像素预算。
 
+需要一次测试 X2/X3/X4 时，运行仓库根目录的批量脚本：
+
+```bash
+cd /home/featurize/work/B2R-SR
+./benchmark_all_scales.sh all
+```
+
+脚本为三个尺度统一使用 48×48 LR patch（对应 GT 96/144/192），分别测试 batch 16/24/32/40/48 的 soft 与 hard 路径，并生成六个 `benchmark_X{scale}_{phase}.log`。基准只使用合成张量测试真实模型前向/反向，不修改正式 YAML、不读取数据集、不保存 checkpoint。
+
+RTX 4090 实测三个尺度均由 batch 48 取得最高 soft/hard 吞吐，且峰值 reserved 显存低于 19GB，因此正式配置为：
+
+| 尺度 | GT size | LR patch | 路由窗口/图 | Batch |
+|---:|---:|---:|---:|---:|
+| X2 | 96 | 48×48 | 36 | 48 |
+| X3 | 144 | 48×48 | 36 | 48 |
+| X4 | 192 | 48×48 | 36 | 48 |
+
 ---
 
 ## 7. 正式训练
 
-性能基准和 batch-4 smoke test 通过后，正式 X4 配置保存在：
+性能基准和 batch-48 smoke test 通过后，正式 X4 配置保存在：
 
 ```text
 codes/options/train/train_B2RSR_RCAN_X4.yml
 ```
 
-它使用 `batch_size: 4` 训练 120000 steps。RTX 4090 上 batch 1 实测约占 5.7GB；考虑固定模型显存、随 batch 线性增长的激活以及运行余量，batch 4 是 24GB 显存下合理的安全起点。
+它使用 `GT_size: 192`、`batch_size: 48` 训练 120000 steps。RTX 4090 实测 soft-routing 为 188.50 images/s、约 18.1GB reserved，hard-routing 为 141.71 images/s、约 19.7GB reserved；两条路径都在 24GB 显存的安全范围内。X4 的 192 HR patch 对应 48×48 LR patch 和每图 36 个 8×8 路由窗口。
 
 启动：
 
@@ -349,4 +366,4 @@ RTX 4090
 - 不要在便宜实例完整解压后再换 GPU；
 - checkpoint、training state 和日志必须保存在 `/home/featurize/work`；
 - 正式训练前必须完成一次真实数据短训练；
-- X4 正式训练使用 `batch_size: 4`；先通过 batch-4 smoke test 确认峰值显存，若 OOM 再降到 3 或 2。
+- X2/X3/X4 正式训练统一使用 48×48 LR patch 和经 RTX 4090 soft/hard 基准选出的 `batch_size: 48`，对应 GT size 为 96/144/192；真实数据若 OOM 再降到 batch 40。

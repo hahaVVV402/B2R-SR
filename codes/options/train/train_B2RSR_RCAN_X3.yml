@@ -57,8 +57,10 @@ datasets:
     dataroot_LQ: /home/featurize/data/DF2K/DF2K_train_LR_bicubic/X3_sub
     use_shuffle: true
     n_workers: 6
-    batch_size: 4
-    GT_size: 96
+    # RTX 4090 soft/hard benchmark winner; 48 samples stabilize degradation targets.
+    batch_size: 48
+    # X3: 144 HR -> 48 LR -> 36 route windows (route_window: 8).
+    GT_size: 144
     use_flip: true
     use_rot: true
     color: RGB

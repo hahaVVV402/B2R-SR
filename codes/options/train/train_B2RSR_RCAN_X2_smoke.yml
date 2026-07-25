@@ -1,5 +1,5 @@
 #### general settings
-name: B2RSR_RCAN_X2
+name: B2RSR_RCAN_X2_SMOKE
 use_tb_logger: true
 model: sr
 distortion: sr
@@ -26,7 +26,7 @@ network_G:
     tau0: 0.5
     alpha: 0.35
     var_weight: 0.2
-    hard_train_after: 20000
+    hard_train_after: 5
     hard_infer: true
     use_ste: true
     benefit_teacher_mode: warmup
@@ -82,10 +82,10 @@ train:
   lr_scheme: CosineAnnealingLR_Restart
   beta1: 0.9
   beta2: 0.99
-  niter: 120000
+  niter: 20
   warmup_iter: -1
-  T_period: [120000]
-  restarts: [120000]
+  T_period: [20]
+  restarts: [20]
   restart_weights: [1]
   eta_min: !!float 1e-7
 
@@ -99,9 +99,9 @@ train:
     deg_weight: 0.05
 
   manual_seed: 10
-  val_freq: !!float 2000
+  val_freq: !!float 10
 
 #### logger
 logger:
-  print_freq: 100
-  save_checkpoint_freq: !!float 2000
+  print_freq: 1
+  save_checkpoint_freq: !!float 10

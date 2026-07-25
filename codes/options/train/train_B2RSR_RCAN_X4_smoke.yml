@@ -57,9 +57,10 @@ datasets:
     dataroot_LQ: /home/featurize/data/DF2K/DF2K_train_LR_bicubic/X4_sub
     use_shuffle: true
     n_workers: 4
-    # Must exceed 1: the degradation proxy is normalized across each batch.
-    batch_size: 4
-    GT_size: 96
+    # Match the benchmark-selected formal geometry to catch real-data OOMs.
+    batch_size: 48
+    # X4: 192 HR -> 48 LR -> 36 route windows (route_window: 8).
+    GT_size: 192
     use_flip: true
     use_rot: true
     color: RGB
