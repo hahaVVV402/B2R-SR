@@ -273,13 +273,14 @@ codes/options/train/train_B2RSR_RCAN_X4.yml
 ```bash
 tmux new -s b2rsr-x4
 cd /home/featurize/work/B2R-SR
-./train_cloud.sh 4 2>&1 | tee train_x4_launcher.log
+./train_cloud.sh 4
 ```
 
-查看训练输出：
+框架会把带时间戳的正式日志直接写入实验目录，无需额外使用 `tee`。查看最新日志：
 
 ```bash
-tail -f train_x4_launcher.log
+LOG=$(find experiments/B2RSR_RCAN_X4 -maxdepth 1 -name 'train_*.log' | sort | tail -1)
+tail -f "$LOG"
 ```
 
 模型和训练状态保存在：
@@ -289,7 +290,15 @@ tail -f train_x4_launcher.log
 ├── models/
 ├── training_state/
 ├── val_images/
-└── train_B2RSR_RCAN_X4.log
+├── tensorboard/
+│   └── events.out.tfevents...
+└── train_B2RSR_RCAN_X4_时间戳.log
+```
+
+全新启动同名实验时，整个旧实验目录（包括 TensorBoard）会自动归档；从 `resume_state` 恢复时则继续写入同一实验目录。查看所有实验：
+
+```bash
+tensorboard --logdir experiments --host 127.0.0.1 --port 6006
 ```
 
 ---
