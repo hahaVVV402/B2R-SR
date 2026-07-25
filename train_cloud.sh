@@ -2,10 +2,15 @@
 set -euo pipefail
 
 SCALE="${1:-4}"
-[[ "$SCALE" =~ ^(2|3|4)$ ]] || { echo "用法: $0 2|3|4" >&2; exit 1; }
+MODE="${2:-train}"
+[[ "$SCALE" =~ ^(2|3|4)$ ]] || { echo "用法: $0 2|3|4 [train|smoke]" >&2; exit 1; }
+[[ "$MODE" =~ ^(train|smoke)$ ]] || { echo "用法: $0 2|3|4 [train|smoke]" >&2; exit 1; }
+[[ "$MODE" != "smoke" || "$SCALE" == "4" ]] || { echo "smoke 配置目前仅支持 X4。" >&2; exit 1; }
 
 ROOT=$(cd "$(dirname "$0")" && pwd)
-CONFIG="options/train/train_B2RSR_RCAN_X${SCALE}.yml"
+SUFFIX=""
+[[ "$MODE" == "smoke" ]] && SUFFIX="_smoke"
+CONFIG="options/train/train_B2RSR_RCAN_X${SCALE}${SUFFIX}.yml"
 CHECKPOINT="$ROOT/experiments/pre_trained_models/RCAN_BIX${SCALE}.pt"
 
 "$ROOT/prepare_pretrained.sh"

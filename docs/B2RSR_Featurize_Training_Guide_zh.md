@@ -216,37 +216,20 @@ experiments/pre_trained_models/RCAN_BIX4.pt
 
 ## 5. 短训练测试
 
-`train_cloud.sh` 默认使用正式的 120000-step 配置。首次测试前，应临时编辑：
+仓库提供独立的 X4 smoke 配置：
 
 ```text
-codes/options/train/train_B2RSR_RCAN_X4.yml
+codes/options/train/train_B2RSR_RCAN_X4_smoke.yml
 ```
 
-建议短测试参数：
-
-```yaml
-name: B2RSR_RCAN_X4_SMOKE
-
-datasets:
-  train:
-    n_workers: 2
-    batch_size: 1
-
-train:
-  niter: 20
-  val_freq: 10
-
-logger:
-  print_freq: 1
-  save_checkpoint_freq: 10
-```
+它使用 `batch_size: 1` 训练 20 steps，并在第 10、20 step 验证和保存，不会修改或覆盖正式配置。
 
 在 tmux 中运行：
 
 ```bash
 tmux new -s b2rsr-x4-smoke
 cd /home/featurize/work/B2R-SR
-./train_cloud.sh 4 2>&1 | tee train_x4_smoke.log
+./train_cloud.sh 4 smoke 2>&1 | tee train_x4_smoke.log
 ```
 
 需要确认：
@@ -276,28 +259,13 @@ tmux attach -t b2rsr-x4-smoke
 
 ## 6. 正式训练
 
-短测试通过后，将 X4 YAML 恢复为正式参数：
+短测试通过后无需修改或恢复 YAML。正式 X4 配置独立保存在：
 
-```yaml
-datasets:
-  train:
-    n_workers: 4
-    batch_size: 1  # 确认显存充足后再尝试 2 或 4
-
-train:
-  niter: 120000
-  val_freq: 2000
-
-logger:
-  print_freq: 100
-  save_checkpoint_freq: 2000
+```text
+codes/options/train/train_B2RSR_RCAN_X4.yml
 ```
 
-将实验名从 smoke 名称恢复为正式名称：
-
-```yaml
-name: B2RSR_RCAN_X4
-```
+它默认从保守的 `batch_size: 1` 开始，共训练 120000 steps；确认峰值显存有足够余量后再考虑增加 batch size。
 
 启动：
 
