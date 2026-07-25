@@ -223,7 +223,7 @@ experiments/pre_trained_models/RCAN_BIX4.pt
 codes/options/train/train_B2RSR_RCAN_X4_smoke.yml
 ```
 
-它使用 `batch_size: 1` 训练 20 steps，并在第 10、20 step 验证和保存，不会修改或覆盖正式配置。
+它使用 `batch_size: 4` 训练 20 steps，并在第 10、20 step 验证和保存，不会修改或覆盖正式配置。B2R-SR 的退化代理目标使用 batch 内归一化，因此不能使用会使目标恒为 1 的 `batch_size: 1`。
 
 在 tmux 中运行：
 
@@ -266,7 +266,7 @@ tmux attach -t b2rsr-x4-smoke
 codes/options/train/train_B2RSR_RCAN_X4.yml
 ```
 
-它默认从保守的 `batch_size: 1` 开始，共训练 120000 steps；确认峰值显存有足够余量后再考虑增加 batch size。
+它使用 `batch_size: 4` 训练 120000 steps。RTX 4090 上 batch 1 实测约占 5.7GB；考虑固定模型显存、随 batch 线性增长的激活以及运行余量，batch 4 是 24GB 显存下合理的安全起点。
 
 启动：
 
@@ -319,4 +319,4 @@ RTX 4090
 - 不要在便宜实例完整解压后再换 GPU；
 - checkpoint、training state 和日志必须保存在 `/home/featurize/work`；
 - 正式训练前必须完成一次真实数据短训练；
-- 首次使用完整 RCAN 时从 `batch_size: 1` 开始。
+- X4 正式训练使用 `batch_size: 4`；先通过 batch-4 smoke test 确认峰值显存，若 OOM 再降到 3 或 2。

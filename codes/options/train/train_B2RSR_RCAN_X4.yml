@@ -57,7 +57,8 @@ datasets:
     dataroot_LQ: /home/featurize/data/DF2K/DF2K_train_LR_bicubic/X4_sub
     use_shuffle: true
     n_workers: 4
-    batch_size: 1
+    # Must exceed 1: the degradation proxy is normalized across each batch.
+    batch_size: 4
     GT_size: 96
     use_flip: true
     use_rot: true
