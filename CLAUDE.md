@@ -48,8 +48,8 @@ Run commands from repository root unless noted.
   - `cd codes/data_scripts && python test_dataloader.py`
 
 ### Utility scripts in repo root
-- `bash start_training.sh` (DART-SR preflight checks; dataset/model/config hints)
-- `bash download_pretrained.sh` (prints expected pretrained model locations)
+- `./prepare_cloud_data.sh /home/featurize/data` (extracts and validates DF2K/DIV2K validation data)
+- `./train_cloud.sh 2|3|4` (prepares data and launches the matching DART++ RCAN training config)
 
 ## High-level architecture
 

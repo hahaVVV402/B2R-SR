@@ -10,3 +10,4 @@ env/
 
 # OS metadata
 .DS_Store
+.pi-subagents/
