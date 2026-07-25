@@ -11,6 +11,23 @@ command -v unzip >/dev/null || { echo "缺少 unzip，请先安装。" >&2; exit
 mkdir -p "$DATA_ROOT"
 cd "$DATA_ROOT"
 
+extract_zip() {
+  local archive=$1 destination=$2 total
+  total=$(unzip -Z1 "$archive" | wc -l | tr -d ' ')
+  unzip -n "$archive" -d "$destination" | awk -v total="$total" '
+    BEGIN { step = int(total / 100); if (step < 1) step = 1 }
+    NR > 1 {
+      done++
+      if (done == 1 || done % step == 0) {
+        percent = int(done * 100 / total); if (percent > 99) percent = 99
+        printf "\r  进度: %3d%% (%d/%d)", percent, done, total
+        fflush()
+      }
+    }
+    END { printf "\r  进度: 100%% (%d/%d)\n", total, total }
+  '
+}
+
 scales=(2 3 4)
 [[ "$SCALE" == "all" ]] || scales=("$SCALE")
 
@@ -30,7 +47,7 @@ if [[ ! -d "$DATA_ROOT/DF2K/DF2K_train_HR_sub" ]]; then
     exit 1
   }
   echo "开始解压大型训练集 DF2K.zip（只在新实例首次运行时执行）"
-  unzip -q -n "$DATA_ROOT/DF2K.zip" -d "$DATA_ROOT"
+  extract_zip "$DATA_ROOT/DF2K.zip" "$DATA_ROOT"
 else
   echo "DF2K 已解压，跳过大型压缩包。"
 fi
@@ -40,7 +57,7 @@ extract_if_missing() {
   [[ -e "$marker" ]] && { echo "已存在，跳过: $marker"; return; }
   [[ -f "$DATA_ROOT/$archive" ]] || { echo "缺少文件: $DATA_ROOT/$archive" >&2; exit 1; }
   echo "解压 $archive"
-  unzip -q -n "$DATA_ROOT/$archive" -d "$DATA_ROOT"
+  extract_zip "$DATA_ROOT/$archive" "$DATA_ROOT"
 }
 
 # 验证集在 Featurize 中可能以一个外层合集 ZIP，或四个独立 ZIP 出现。
@@ -54,7 +71,7 @@ if [[ ! -d "$DATA_ROOT/DIV2K_valid_HR" && ! -f "$DATA_ROOT/DIV2K_valid_HR.zip" ]
     exit 1
   }
   echo "解压验证集合集 $(basename "$VALID_BUNDLE")"
-  unzip -q -n "$VALID_BUNDLE" -d "$DATA_ROOT"
+  extract_zip "$VALID_BUNDLE" "$DATA_ROOT"
 fi
 
 extract_if_missing DIV2K_valid_HR.zip "$DATA_ROOT/DIV2K_valid_HR"
