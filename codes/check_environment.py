@@ -8,6 +8,7 @@ import sys
 
 PACKAGES = {
     "torch": "PyTorch",
+    "torchvision": "TorchVision",
     "numpy": "NumPy",
     "cv2": "OpenCV",
     "lmdb": "LMDB",

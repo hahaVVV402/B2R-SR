@@ -1,4 +1,7 @@
-# Install the platform-specific PyTorch build first; see the Featurize guide.
+# CUDA 12.1 wheels are used on Linux GPU hosts; unsupported platforms fall back to PyPI.
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.2.2
+torchvision==0.17.2
 numpy==1.26.4
 opencv-python-headless==4.9.0.80
 lmdb>=1.4

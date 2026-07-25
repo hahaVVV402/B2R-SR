@@ -66,10 +66,11 @@ python -m pip install --upgrade pip
 ```bash
 python -m pip install \
   torch==2.2.2 \
+  torchvision==0.17.2 \
   --index-url https://download.pytorch.org/whl/cu121
 ```
 
-`nvidia-smi` 显示的是驱动支持的最高 CUDA 版本；较新的 NVIDIA 驱动可以运行 cu121 PyTorch wheel。无需另外安装系统 CUDA、`cudatoolkit` 或 NVIDIA 驱动。
+`torchvision` 是 `codes/utils/util.py` 的运行时依赖，版本必须与 PyTorch 匹配。`nvidia-smi` 显示的是驱动支持的最高 CUDA 版本；较新的 NVIDIA 驱动可以运行 cu121 wheel。无需另外安装系统 CUDA、`cudatoolkit` 或 NVIDIA 驱动。
 
 安装项目依赖。仓库提供统一的 `requirements.txt`：
 
@@ -78,7 +79,7 @@ cd /home/featurize/work/B2R-SR
 python -m pip install -r requirements.txt
 ```
 
-PyTorch 因 CUDA/CPU/macOS 构建不同，不写入通用 requirements；应先按上一步单独安装。
+`requirements.txt` 同样固定了这两个版本并配置 cu121 额外索引；已按上一步安装时，重复执行只会确认版本满足要求。
 
 ### 3.3 验证依赖和 PyTorch CUDA 环境
 
