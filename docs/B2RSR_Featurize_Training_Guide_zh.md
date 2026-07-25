@@ -71,39 +71,22 @@ python -m pip install \
 
 `nvidia-smi` 显示的是驱动支持的最高 CUDA 版本；较新的 NVIDIA 驱动可以运行 cu121 PyTorch wheel。无需另外安装系统 CUDA、`cudatoolkit` 或 NVIDIA 驱动。
 
-安装项目依赖：
+安装项目依赖。仓库提供统一的 `requirements.txt`：
 
 ```bash
-python -m pip install \
-  numpy==1.26.4 \
-  opencv-python-headless==4.9.0.80 \
-  lmdb \
-  pyyaml \
-  tensorboard
+cd /home/featurize/work/B2R-SR
+python -m pip install -r requirements.txt
 ```
 
-### 3.3 验证 PyTorch CUDA 环境
+PyTorch 因 CUDA/CPU/macOS 构建不同，不写入通用 requirements；应先按上一步单独安装。
+
+### 3.3 验证依赖和 PyTorch CUDA 环境
+
+仓库提供检查脚本，会验证所有核心依赖、CUDA 可用性并执行一次 GPU 矩阵运算：
 
 ```bash
-python - <<'PY'
-import torch
-import numpy
-import cv2
-import lmdb
-import yaml
-
-print("PyTorch:", torch.__version__)
-print("PyTorch CUDA:", torch.version.cuda)
-print("NumPy:", numpy.__version__)
-print("OpenCV:", cv2.__version__)
-print("CUDA available:", torch.cuda.is_available())
-print("GPU count:", torch.cuda.device_count())
-print("GPU:", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None")
-
-x = torch.randn(1024, 1024, device="cuda")
-y = x @ x
-print("CUDA tensor:", y.device, y.shape)
-PY
+cd /home/featurize/work/B2R-SR
+python codes/check_environment.py --cuda
 ```
 
 预期至少包含：
