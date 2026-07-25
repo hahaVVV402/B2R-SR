@@ -43,6 +43,20 @@ extract_if_missing() {
   unzip -q -n "$DATA_ROOT/$archive" -d "$DATA_ROOT"
 }
 
+# 验证集在 Featurize 中可能以一个外层合集 ZIP，或四个独立 ZIP 出现。
+if [[ ! -d "$DATA_ROOT/DIV2K_valid_HR" && ! -f "$DATA_ROOT/DIV2K_valid_HR.zip" ]]; then
+  VALID_BUNDLE=""
+  for candidate in DIV2K_vaild100.zip DIV2K_valid100.zip; do
+    [[ -f "$DATA_ROOT/$candidate" ]] && { VALID_BUNDLE="$DATA_ROOT/$candidate"; break; }
+  done
+  [[ -n "$VALID_BUNDLE" ]] || {
+    echo "缺少验证集目录、独立 ZIP 或 DIV2K_vaild100.zip。" >&2
+    exit 1
+  }
+  echo "解压验证集合集 $(basename "$VALID_BUNDLE")"
+  unzip -q -n "$VALID_BUNDLE" -d "$DATA_ROOT"
+fi
+
 extract_if_missing DIV2K_valid_HR.zip "$DATA_ROOT/DIV2K_valid_HR"
 for scale in "${scales[@]}"; do
   extract_if_missing "DIV2K_valid_LR_bicubic_X${scale}.zip" \
