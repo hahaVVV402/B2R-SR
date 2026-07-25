@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Smoke test for the original DART-SR path and the DART++ improvement path.
+"""Smoke test for the original DART-SR path and the B2R-SR improvement path.
 
 This script does not require datasets or pretrained checkpoints. It uses tiny
 random tensors to verify:
@@ -10,7 +10,7 @@ random tensors to verify:
 
 Run from the repository root:
 
-    .venv/bin/python codes/test_dartsrpp_flow.py
+    .venv/bin/python codes/test_b2rsr_flow.py
 """
 
 import argparse
@@ -294,7 +294,7 @@ def main():
     run_direct_plugin_smoke(device)
     run_sr_model_smoke(device)
 
-    print("\nALL DART-SR / DART++ FLOW TESTS PASSED")
+    print("\nALL DART-SR / B2R-SR FLOW TESTS PASSED")
 
 
 if __name__ == "__main__":

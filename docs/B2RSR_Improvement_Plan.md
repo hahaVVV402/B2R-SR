@@ -11,7 +11,7 @@ The key distinction is:
 
 Therefore, the improved method should be described as:
 
-> DART++ is a backbone-agnostic dynamic inference framework for efficient image super-resolution. It wraps pretrained SR backbones and allocates computation to spatial windows according to predicted reconstruction benefit under a controllable computation budget.
+> B2R-SR is a backbone-agnostic dynamic inference framework for efficient image super-resolution. It wraps pretrained SR backbones and allocates computation to spatial windows according to predicted reconstruction benefit under a controllable computation budget.
 
 This positioning is important because related works such as ClassSR, FADN, AdaDSR, AdaFormer, and recent high-frequency masking methods already cover different forms of region-aware or token-aware SR acceleration. To target CCF-B and keep CCF-C as a safer fallback, the improvement should emphasize a stronger and clearer contribution than heuristic window skipping.
 
@@ -56,7 +56,7 @@ High-benefit windows are processed by the original heavy SR block. Low-benefit w
 
 This gives a stronger claim:
 
-> DART++ allocates computation according to predicted reconstruction gain, not merely image complexity or high-frequency magnitude.
+> B2R-SR allocates computation according to predicted reconstruction gain, not merely image complexity or high-frequency magnitude.
 
 ## 4. Proposed Framework
 
@@ -72,7 +72,7 @@ LR image
   |       +--> ...
   |       +--> stage K
   |
-  +--> DART++ acceleration plugin
+  +--> B2R-SR acceleration plugin
           |
           +--> degradation and complexity descriptor
           +--> budget allocator
@@ -87,7 +87,7 @@ Output:
   SR reconstruction
 ```
 
-The backbone remains replaceable. DART++ should be implemented as a controller that can wrap different SR architectures rather than a new monolithic network.
+The backbone remains replaceable. B2R-SR should be implemented as a controller that can wrap different SR architectures rather than a new monolithic network.
 
 ## 5. Main Modules
 
@@ -242,7 +242,7 @@ The minimum experiment package for a CCF-C submission should include:
 
 The CCF-C-level claim can be:
 
-> DART++ provides a general and controllable dynamic inference plugin for CNN-based SR backbones and achieves better speed-quality tradeoffs than prior region-aware acceleration methods.
+> B2R-SR provides a general and controllable dynamic inference plugin for CNN-based SR backbones and achieves better speed-quality tradeoffs than prior region-aware acceleration methods.
 
 ## 9. Experiments for CCF-B Target
 
@@ -259,7 +259,7 @@ Additional requirements:
 
 The CCF-B-level claim should be:
 
-> DART++ is a unified benefit-aware computation allocation framework for both CNN and Transformer SR backbones, providing controllable acceleration under diverse degradations with real hardware speedup.
+> B2R-SR is a unified benefit-aware computation allocation framework for both CNN and Transformer SR backbones, providing controllable acceleration under diverse degradations with real hardware speedup.
 
 ## 10. Suggested Paper Contributions
 

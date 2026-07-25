@@ -1,5 +1,5 @@
 #### general settings
-name: DARTSRPP_RCAN_X3
+name: B2RSR_RCAN_X3
 use_tb_logger: true
 model: sr
 distortion: sr
@@ -10,7 +10,7 @@ gpu_ids: [0]
 network_G:
   which_model_G: RCAN
   n_resblocks: 20
-  n_feats: 36
+  n_feats: 64
   n_resgroups: 10
   res_scale: 1
   n_colors: 3
@@ -20,7 +20,7 @@ network_G:
   plugin:
     enable: true
     # Keep the original DART-SR path available through routing_mode: threshold.
-    # benefit_topk enables the DART++ benefit-aware top-k routing path.
+    # benefit_topk enables the B2RSR benefit-aware top-k routing path.
     routing_mode: benefit_topk
     route_window: 8
     tau0: 0.5
@@ -70,7 +70,7 @@ datasets:
 
 #### path
 path:
-  pretrain_model_G: ../experiments/pre_trained_models/RCAN_BIX3.pth
+  pretrain_model_G: ../experiments/pre_trained_models/RCAN_BIX3.pt
   strict_load: true
   resume_state: ~
 

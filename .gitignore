@@ -10,4 +10,25 @@ env/
 
 # OS metadata
 .DS_Store
+
+# Local Pi/Codex runtime artifacts
+.pi/
 .pi-subagents/
+
+# Datasets and generated training outputs (keep directory documentation)
+datasets/*
+!datasets/README.md
+experiments/*
+!experiments/pre_trained_models/
+experiments/pre_trained_models/*
+!experiments/pre_trained_models/README.md
+results/*
+!results/README.md
+tb_logger/*
+!tb_logger/README.md
+
+# Model checkpoints and training states
+*.pth
+*.pt
+*.ckpt
+*.state

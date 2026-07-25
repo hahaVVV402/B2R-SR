@@ -49,7 +49,7 @@ Run commands from repository root unless noted.
 
 ### Utility scripts in repo root
 - `./prepare_cloud_data.sh /home/featurize/data` (extracts and validates DF2K/DIV2K validation data)
-- `./train_cloud.sh 2|3|4` (prepares data and launches the matching DART++ RCAN training config)
+- `./train_cloud.sh 2|3|4` (prepares data and launches the matching B2R-SR RCAN training config)
 
 ## High-level architecture
 

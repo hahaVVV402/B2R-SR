@@ -1,4 +1,11 @@
-# ClassSR
+# B2R-SR
+
+**Benefit- and Budget-Aware Dynamic Routing for Efficient Image Super-Resolution**
+
+B2R-SR is a plug-and-play acceleration framework that allocates stage-wise computation to spatial windows according to predicted reconstruction benefit under a controllable compute budget. This research implementation is built on the official ClassSR codebase; the original ClassSR pipeline remains available for baseline comparison and reproducibility.
+
+## ClassSR foundation
+
 (CVPR2021) ClassSR: A General Framework to Accelerate Super-Resolution Networks by Data Characteristic.
 
 [Paper](https://openaccess.thecvf.com/content/CVPR2021/papers/Kong_ClassSR_A_General_Framework_to_Accelerate_Super-Resolution_Networks_by_Data_CVPR_2021_paper.pdf)
@@ -8,7 +15,7 @@ Authors: Xiangtao Kong, [Hengyuan Zhao](https://github.com/zhaohengyuan1), [Yu Q
 
 ![Demo Image](https://raw.githubusercontent.com/Xiangtaokong/ClassSR/main/demo_images/show.png)
 
-## Abstract
+## Original ClassSR Abstract
 
 We aim at accelerating super-resolution (SR) networks on large images (2K-8K). The large images are usually decomposed into small sub-images in practical usages. Based on this processing, we found that different image regions have different restoration difficulties and can be processed by networks with different capacities. Intuitively, smooth areas are easier to super-solve than complex textures. To utilize this property, we can adopt appropriate SR networks to process different sub-images after the decomposition. On this basis, we propose a new solution pipeline -- ClassSR that combines classification and SR in a unified framework. In particular, it first uses a Class-Module to classify the sub-images into different classes according to restoration difficulties, then applies an SR-Module to perform SR for different classes. The Class-Module is a conventional classification network, while the SR-Module is a network container that consists of the to-be-accelerated SR network and its simplified versions. We further introduce a new classification method with two losses -- Class-Loss and Average-Loss to produce the classification results. After joint training, a majority of sub-images will pass through smaller networks, thus the computational cost can be significantly reduced. Experiments show that our ClassSR can help most existing methods (e.g., FSRCNN, CARN, SRResNet, RCAN) save up to 50% FLOPs on DIV8K datasets. This general framework can also be applied in other low-level vision tasks.
 
@@ -75,28 +82,28 @@ python test_ClassSR.py -opt options/test/test_ClassSR_RCAN.yml
 ```
 6. The output results will be sorted in `./results`. 
 
-## DART-SR (framework-level dynamic token routing plugin)
+## B2R-SR dynamic routing framework
 
-This repository also includes a plug-and-play acceleration framework named **DART-SR**
-(`Degradation-Aware Routing Token Plugin`). Unlike patch-level ClassSR routing,
-DART-SR can be attached to a single pretrained backbone (RCAN/CARN/SRResNet) and
-uses window/token-level dynamic skipping with degradation-aware thresholds.
+B2R-SR wraps a pretrained SR backbone and combines benefit-aware top-k window routing,
+stage-wise budget allocation, degradation conditioning, and a lightweight compensation
+path. The original threshold-based DART-SR mode is retained as an ablation baseline.
 
-1. Train with frozen backbone and trainable plugin modules:
-```
-cd codes
-python train.py -opt options/train/train_DARTSR_RCAN.yml
-python train.py -opt options/train/train_DARTSR_CARN.yml
-python train.py -opt options/train/train_DARTSR_SRResNet.yml
+Train the RCAN variant at scale x2, x3, or x4:
+
+```bash
+./train_cloud.sh 2
+./train_cloud.sh 3
+./train_cloud.sh 4
 ```
 
-2. Test with unified framework metrics (`keep_ratio`, `flops_estimated`, `latency_ms`):
+Run the dataset-free integration smoke test:
+
+```bash
+python codes/test_b2rsr_flow.py --cuda
 ```
-cd codes
-python test.py -opt options/test/test_DARTSR_RCAN.yml
-python test.py -opt options/test/test_DARTSR_CARN.yml
-python test.py -opt options/test/test_DARTSR_SRResNet.yml
-```
+
+Testing reports reconstruction quality together with routing metrics such as
+`keep_ratio`, `flops_estimated`, and `latency_ms`.
 
 
 ## How to train a single branch

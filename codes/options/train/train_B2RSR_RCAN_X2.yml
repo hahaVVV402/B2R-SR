@@ -1,26 +1,26 @@
 #### general settings
-name: DARTSRPP_RCAN_X4
+name: B2RSR_RCAN_X2
 use_tb_logger: true
 model: sr
 distortion: sr
-scale: 4
+scale: 2
 gpu_ids: [0]
 
 #### network structures
 network_G:
   which_model_G: RCAN
   n_resblocks: 20
-  n_feats: 36
+  n_feats: 64
   n_resgroups: 10
   res_scale: 1
   n_colors: 3
   rgb_range: 255
-  scale: 4
+  scale: 2
   reduction: 16
   plugin:
     enable: true
     # Keep the original DART-SR path available through routing_mode: threshold.
-    # benefit_topk enables the DART++ benefit-aware top-k routing path.
+    # benefit_topk enables the B2RSR benefit-aware top-k routing path.
     routing_mode: benefit_topk
     route_window: 8
     tau0: 0.5
@@ -34,7 +34,7 @@ network_G:
     target_keep_min: 0.45
     target_keep_max: 0.95
     static_flops_ratio: 0.25
-    base_flops: 10.33
+    base_flops: 0.0
     freeze_backbone: true
     budget_allocator:
       enable: true
@@ -54,7 +54,7 @@ datasets:
     name: DIV2K
     mode: LQGT_rcan
     dataroot_GT: /home/featurize/data/DF2K/DF2K_train_HR_sub
-    dataroot_LQ: /home/featurize/data/DF2K/DF2K_train_LR_bicubic/X4_sub
+    dataroot_LQ: /home/featurize/data/DF2K/DF2K_train_LR_bicubic/X2_sub
     use_shuffle: true
     n_workers: 6
     batch_size: 4
@@ -66,11 +66,11 @@ datasets:
     name: Set5
     mode: LQGT_rcan
     dataroot_GT: /home/featurize/data/DIV2K_valid_HR
-    dataroot_LQ: /home/featurize/data/DIV2K_valid_LR_bicubic/X4
+    dataroot_LQ: /home/featurize/data/DIV2K_valid_LR_bicubic/X2
 
 #### path
 path:
-  pretrain_model_G: ../experiments/pre_trained_models/RCAN_BIX4.pth
+  pretrain_model_G: ../experiments/pre_trained_models/RCAN_BIX2.pt
   strict_load: true
   resume_state: ~
 
