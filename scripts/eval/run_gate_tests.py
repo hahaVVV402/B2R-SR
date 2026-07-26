@@ -439,7 +439,7 @@ def main():
 
     checkpoint, temporary = resolve_checkpoint(args.checkpoint)
     try:
-        parsed_opt = option.parse(args.config, is_train=False)
+        parsed_opt = option.dict_to_nonedict(option.parse(args.config, is_train=False))
         default_root = "/home/featurize/data"
         for dataset_opt in parsed_opt["datasets"].values():
             for key in ("dataroot_GT", "dataroot_LQ"):
