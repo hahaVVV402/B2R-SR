@@ -1,0 +1,79 @@
+#### general settings
+name: eval_B2RSR_RCAN_X4
+model: sr
+distortion: sr
+scale: 4
+crop_border: ~
+gpu_ids: [0]
+
+#### B2R-SR with the official full-width RCAN backbone
+network_G:
+  which_model_G: RCAN
+  n_resblocks: 20
+  n_feats: 64
+  n_resgroups: 10
+  res_scale: 1
+  n_colors: 3
+  rgb_range: 255
+  scale: 4
+  reduction: 16
+  plugin:
+    enable: true
+    routing_mode: benefit_topk
+    route_window: 8
+    tau0: 0.5
+    alpha: 0.35
+    var_weight: 0.2
+    hard_train_after: 20000
+    hard_infer: true
+    use_ste: true
+    benefit_teacher_mode: warmup
+    sync_latency: true
+    target_keep_min: 0.45
+    target_keep_max: 0.95
+    static_flops_ratio: 0.25
+    base_flops: 0.0
+    freeze_backbone: true
+    budget_allocator:
+      enable: true
+      user_budget: 0.70
+      hidden_dim: 32
+      delta_scale: 0.15
+    cheap_path:
+      enable: true
+      hidden_scale: 0.25
+    deg_estimator:
+      enable: true
+      hidden_dim: 32
+
+datasets:
+  test1:
+    name: Set5
+    mode: LQGT_rcan
+    dataroot_GT: /home/featurize/data/SRBenchmarks/Set5/HR
+    dataroot_LQ: /home/featurize/data/SRBenchmarks/Set5/LR_bicubic/X4
+  test2:
+    name: Set14
+    mode: LQGT_rcan
+    dataroot_GT: /home/featurize/data/SRBenchmarks/Set14/HR
+    dataroot_LQ: /home/featurize/data/SRBenchmarks/Set14/LR_bicubic/X4
+  test3:
+    name: BSD100
+    mode: LQGT_rcan
+    dataroot_GT: /home/featurize/data/SRBenchmarks/BSD100/HR
+    dataroot_LQ: /home/featurize/data/SRBenchmarks/BSD100/LR_bicubic/X4
+  test4:
+    name: Urban100
+    mode: LQGT_rcan
+    dataroot_GT: /home/featurize/data/SRBenchmarks/Urban100/HR
+    dataroot_LQ: /home/featurize/data/SRBenchmarks/Urban100/LR_bicubic/X4
+  test5:
+    name: Manga109
+    mode: LQGT_rcan
+    dataroot_GT: /home/featurize/data/SRBenchmarks/Manga109/HR
+    dataroot_LQ: /home/featurize/data/SRBenchmarks/Manga109/LR_bicubic/X4
+
+path:
+  # scripts/eval/run_b2rsr_rcan_x4.sh can override this without editing the file.
+  pretrain_model_G: ../experiments/B2RSR_RCAN_X4/models/120000_G.pth
+  strict_load: true

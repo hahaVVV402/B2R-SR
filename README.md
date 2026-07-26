@@ -102,8 +102,18 @@ Run the dataset-free integration smoke test:
 python codes/test_b2rsr_flow.py --cuda
 ```
 
-Testing reports reconstruction quality together with routing metrics such as
-`keep_ratio`, `flops_estimated`, and `latency_ms`.
+Prepare the standard SR benchmarks and evaluate dense RCAN against a trained
+B2R-SR checkpoint:
+
+```bash
+./scripts/data/prepare_sr_benchmarks.sh /home/featurize/data
+./scripts/eval/run_b2rsr_rcan_x4.sh all \
+  experiments/B2RSR_RCAN_X4/models/120000_G.pth
+```
+
+Testing reports RGB and Y-channel PSNR/SSIM together with routing metrics.
+See [`scripts/README.md`](scripts/README.md) for dataset layout, output paths,
+and repeatable latency benchmarking.
 
 
 ## How to train a single branch

@@ -1,0 +1,50 @@
+#### general settings
+name: eval_RCAN_X4_dense
+model: sr
+distortion: sr
+scale: 4
+crop_border: ~
+gpu_ids: [0]
+
+#### official full-width RCAN
+network_G:
+  which_model_G: RCAN
+  n_resblocks: 20
+  n_feats: 64
+  n_resgroups: 10
+  res_scale: 1
+  n_colors: 3
+  rgb_range: 255
+  scale: 4
+  reduction: 16
+
+datasets:
+  test1:
+    name: Set5
+    mode: LQGT_rcan
+    dataroot_GT: /home/featurize/data/SRBenchmarks/Set5/HR
+    dataroot_LQ: /home/featurize/data/SRBenchmarks/Set5/LR_bicubic/X4
+  test2:
+    name: Set14
+    mode: LQGT_rcan
+    dataroot_GT: /home/featurize/data/SRBenchmarks/Set14/HR
+    dataroot_LQ: /home/featurize/data/SRBenchmarks/Set14/LR_bicubic/X4
+  test3:
+    name: BSD100
+    mode: LQGT_rcan
+    dataroot_GT: /home/featurize/data/SRBenchmarks/BSD100/HR
+    dataroot_LQ: /home/featurize/data/SRBenchmarks/BSD100/LR_bicubic/X4
+  test4:
+    name: Urban100
+    mode: LQGT_rcan
+    dataroot_GT: /home/featurize/data/SRBenchmarks/Urban100/HR
+    dataroot_LQ: /home/featurize/data/SRBenchmarks/Urban100/LR_bicubic/X4
+  test5:
+    name: Manga109
+    mode: LQGT_rcan
+    dataroot_GT: /home/featurize/data/SRBenchmarks/Manga109/HR
+    dataroot_LQ: /home/featurize/data/SRBenchmarks/Manga109/LR_bicubic/X4
+
+path:
+  pretrain_model_G: ../experiments/pre_trained_models/RCAN_BIX4.pt
+  strict_load: true
