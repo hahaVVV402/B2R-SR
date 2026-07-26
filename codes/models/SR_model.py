@@ -17,7 +17,7 @@ class SRModel(BaseModel):
         super(SRModel, self).__init__(opt)
 
         self.plugin_info = None
-        self.train_opt = opt['train']
+        self.train_opt = opt.get('train') or {}
         self.plugin_loss_weights = self.train_opt.get('plugin_loss', {})
 
         if opt['dist']:

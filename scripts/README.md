@@ -70,6 +70,34 @@ results/eval_B2RSR_RCAN_X4/
 `test.py` reports RGB PSNR/SSIM and Y-channel PSNR/SSIM. Use the Y-channel
 numbers for comparison with the standard RCAN paper tables.
 
+## Four decision gates with one checkpoint
+
+On a GPU instance, attach these two files under `/home/featurize/data`:
+
+```text
+B2RSR_RCAN_X4_120000_export.tar
+benchmark.tar
+```
+
+Then run one command:
+
+```bash
+python scripts/eval/run_gate_tests.py \
+  --checkpoint /home/featurize/data/B2RSR_RCAN_X4_120000_export.tar \
+  --archive /home/featurize/work/B2RSR_GATE_RESULTS.tar.gz
+```
+
+The script prepares the standard datasets, extracts the checkpoint temporarily,
+and runs: dense-vs-all-keep equivalence, matched-K routing policies, a budget
+sweep, and repeated dense/B2R latency. It writes JSON and Markdown reports and
+produces the single archive passed through `--archive`.
+
+Gate 1 includes a feature-delta teacher upper bound, but not the expensive GT
+counterfactual oracle; Gate 3 is repeated forward timing without quality
+matching. Both therefore remain screening results rather than automatic PASS
+verdicts. These fixed-weight diagnostics do not replace formal retrained
+ablations.
+
 ## Repeatable inference latency
 
 Run quality evaluation first, then benchmark both configurations with the same
