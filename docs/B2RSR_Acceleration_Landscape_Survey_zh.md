@@ -102,6 +102,42 @@ INT8**——但你实测 fp16 autocast 反而更慢，说明 PyTorch eager 是�
 region-adaptive 计算（平滑区少算、纹理区多算）尚未饱和 [需专项检索确认]。
 门槛：需要 SD 级显存（3060 12GB 勉强推理、训练需租更大卡）。
 
+### 族 G：神经增强流媒体系统（系统顶会赛道，二次补查新增）
+
+| 工作 | 出处 | 机制 |
+|---|---|---|
+| NEMO | MobiCom 2020 | 视频流只对 anchor 帧做 SR，其余帧复用增强结果 |
+| Palantír | MMSys 2025 | patch 粒度 anchor 调度，UHD 直播实时 SR |
+| EVASR | ACM TOMM 2025 | 显著性 patch 走 SR、其余 bicubic 的边缘视频分发系统 |
+| Supremo / TileSR | 2020 / INFOCOM 2024 | 云边协同 / 多设备 tile 并行卸载 |
+
+**特点**：本质就是"内容感知计算分配 + 真实延迟"，但以视频/系统为载体，加速数字
+真实。**EVASR 的 patch 级 SR/bicubic 级联与主线 α 结构同源，必须列为 α 的查新
+与对比对象**。已决策不转入该赛道（系统会议范式陌生、工程量大），仅作 related work。
+
+### 族 H：压缩域/编码信息复用（活跃：CVPR 2026 Highlight 级）
+
+| 工作 | 出处 | 机制 |
+|---|---|---|
+| CDA-VSR | CVPR 2026 Highlight | 复用码流 motion vector/残差/帧类型加速在线 VSR |
+| CIAF | 2022 | 编码信息辅助的递归 VSR 加速 |
+
+**特点**："复用编码器已付计算"的哲学；仅适用于视频/压缩输入，与单图主线正交，
+作背景引用。
+
+### 族 I：感知/注视点驱动计算分配（补查新增）
+
+Perceptually Optimized SR (2024)、Neural Foveated SR (VR)、EVASR 的显著性调度。
+依赖观看条件建模或眼动硬件，离当前设定远；其"人眼分辨不出处不花算力"的动机
+可为 α 的 patch 难度定义提供感知加权思路 [可选增量]。
+
+### 补查同时确认的两个单图近邻（α 必须对比）
+
+- **AnySR**（2024）：任意尺度 SR 改造为 any-scale any-resource，小尺度少算——
+  "预算可控"叙事的直接近邻；
+- **CQ 可控 SR**（arXiv 2412.05517 / 2510.23978）：测试时成本-质量可控的
+  Fourier 分量式 SR——与原始 budget 思想同源。
+
 ---
 
 ## 2. 结合你的现实约束的三条候选主线
@@ -138,17 +174,27 @@ LUT+微型残差网络混合、跨通道 LUT）。
 
 ---
 
-## 3. 建议的决策顺序
+## 3. 建议的决策顺序（2026-07-27 已决策更新）
+
+**已定：走 CV 会议、单图大图 patch 级联（主线 α）。** 系统会议赛道（族 G）因范式
+陌生、工程量大而排除，但 EVASR/Palantír 必须进 α 的 related work 与差异化论证
+（α 的候选差异点：质量保证的升级决策 vs EVASR 的显著性启发式调度）。
+
+**大论文衔接叙事（已定）**：论文1（重参数化模型级加速）→ 论文2（patch 级联
+框架级加速，其中快路径采用重参数化系模型）。主线：
+《面向真实推理延迟的图像超分辨率加速：从模型结构到推理框架》。
 
 ```text
 第 1 步（下次开机，免训练，~1 小时）：
   主线 α 的 oracle kill-check——Test2K/4K 大图 patch 级级联上界
-  ├─ oracle ≥1.3× → α 立项，进入便宜路径选型（bicubic / SR-LUT / SPAN-tiny）
+  （便宜路径同时测 bicubic / SR-LUT / SPAN 级轻模型三档）
+  ├─ oracle ≥1.3× → α 立项，进入便宜路径选型与判别器训练
   └─ oracle <1.3× → α 关闭，在 β 与 γ 之间做战略选择（β=稳，γ=赌）
 
 第 2 步（若 α 立项）：
   便宜路径落地 + 难度判别器训练（首次真训练，几 GPU 时级）
   + 嫁接 conformal 质量保证（前次调研的差异化增量）
+  + 查新范围扩至系统会议（EVASR/Palantír/NEMO）
 
 任何时候：负结果资产不浪费——
   "冻结 RCAN 不可免训练压缩"的三轮诊断 + Gate 方法论
@@ -175,6 +221,10 @@ LUT+微型残差网络混合、跨通道 LUT）。
    quality guarantee latency budget"  ← 确认差异化增量仍无人做
 5. site:openaccess.thecvf.com CAMixerSR PCSR ENAF 后继工作 2025 2026 large
    image efficient SR
+5b. "EVASR salience-aware patch super-resolution" 后继与引用（系统侧近邻，
+    差异化必须相对它论证）
+5c. "AnySR any-scale any-resource" 与 "cost-and-quality controllable
+    super-resolution" 2025 2026 —— 预算可控叙事的近邻排查
 ```
 
 ### 4.2 便宜路径选型
@@ -232,6 +282,10 @@ LUT+微型残差网络混合、跨通道 LUT）。
 | Mamba 系 | MambaIR/v2 (ECCV 2024/CVPR 2025)；TSP-Mamba (CVPR 2025) |
 | 一步扩散 SR | OSEDiff (NeurIPS 2024)；TSD-SR (CVPR 2025)；QArtSR、InfVSR (2025 preprints) |
 | PLKSR | arXiv 2404.11848 / IEEE Access |
+| 流媒体系统（补查） | NEMO (MobiCom 2020, kaist-ina 官方)；Palantír (MMSys 2025, arXiv 2408.06152)；EVASR (ACM TOMM 2025)；TileSR (INFOCOM 2024)；Supremo |
+| 压缩域（补查） | CDA-VSR (CVPR 2026 Highlight, github/sspBIT)；CIAF (arXiv 2210.08229) |
+| 感知驱动（补查） | Perceptually Optimized SR (arXiv 2411.17513)；Neural Foveated SR (2023) |
+| 预算可控近邻（补查） | AnySR (arXiv 2407.04241)；CQ-controllable SR (arXiv 2412.05517, 2510.23978) |
 
 **未核验/需专项确认**：(a) "LUT 便宜路径 + NN 重路径混合级联"无直接先例——仅基于
 本次检索，α 立项前必须用 §4.1 的 1–3 号提示词专项查新；(b) 扩散 SR 的
