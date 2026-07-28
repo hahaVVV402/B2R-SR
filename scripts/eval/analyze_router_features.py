@@ -111,6 +111,56 @@ def conservative_operating_point(scores, labels, recall_target):
     }
 
 
+def budget_curve(scores, drops, patches_per_image, image_ids, bicubic_ms,
+                dense_b16_ms, dense_whole_ms, budgets=(0.02, 0.05, 0.1, 0.2)):
+    """Threshold sweep under an image-level quality-loss budget.
+
+    Instead of patch-level zero-miss recall, allow routing borderline patches
+    cheap as long as the MEAN per-image PSNR loss (approximated by the mean of
+    clipped positive drops over all patches of that image) stays within budget.
+    Returns, per budget, the best threshold and its cheap%/latency/speedup.
+    """
+    scores = np.asarray(scores, dtype=np.float64)
+    drops = np.asarray(drops, dtype=np.float64)
+    image_ids = np.asarray(image_ids)
+    unique_imgs = np.unique(image_ids)
+    thresholds = np.quantile(scores, np.linspace(0.0, 1.0, 201))
+    results = []
+    for budget in budgets:
+        best = None
+        for t in thresholds:
+            cheap = scores < t  # below threshold -> route cheap
+            # per-image mean loss caused by cheap-routed patches
+            worst_img_loss, mean_img_loss = 0.0, 0.0
+            ok = True
+            losses = []
+            for img in unique_imgs:
+                m = image_ids == img
+                loss = float(np.clip(drops[m][cheap[m]], 0, None).sum() / m.sum())
+                losses.append(loss)
+            mean_img_loss = float(np.mean(losses))
+            worst_img_loss = float(np.max(losses))
+            if mean_img_loss > budget:
+                ok = False
+            if not ok:
+                continue
+            frac = float(cheap.mean())
+            if best is None or frac > best["cheap_fraction"]:
+                ms = patches_per_image * (
+                    frac * bicubic_ms + (1 - frac) * dense_b16_ms)
+                best = {
+                    "budget_db": budget,
+                    "threshold": float(t),
+                    "cheap_fraction": frac,
+                    "mean_image_loss_db": mean_img_loss,
+                    "worst_image_loss_db": worst_img_loss,
+                    "ms_per_image": ms,
+                    "speedup": dense_whole_ms / ms,
+                }
+        results.append(best or {"budget_db": budget, "note": "no feasible threshold"})
+    return results
+
+
 def logistic_fit(features, labels, iters=3000, lr=0.5):
     """Tiny logistic regression on standardized features, numpy only."""
     x = np.asarray(features, dtype=np.float64)
@@ -218,6 +268,12 @@ def main():
         operating["recall_{}".format(recall)] = op
     oracle_op = implied(1 - esc_frac)
 
+    # image-level quality-budget sweep (action 1)
+    image_ids = [r["image"] for r in rows]
+    budget_rows = budget_curve(
+        combo_scores, np.array(drops), patches_per_image, image_ids,
+        args.bicubic_ms, args.dense_b16_ms, args.dense_whole_ms)
+
     # export
     stamp = time.strftime("%Y%m%d-%H%M%S")
     out_dir = Path(args.output_dir) if args.output_dir else (
@@ -243,11 +299,15 @@ def main():
         },
         "oracle_reference": oracle_op,
         "conservative_operating_points": operating,
+        "image_budget_operating_points": budget_rows,
         "notes": [
             "标签: bicubic_drop > eps 记为必须升级 (positive)。",
             "AUC 为秩和法；combo 为 6 特征 logistic（全量拟合，无 train/val 切分，"
             "属于乐观筛查上界；正式判别器需按图划分训练/验证）。",
             "conservative operating points 给出漏检率约束下可实现的 cheap 比例。",
+            "image-budget 工作点：每图平均损失 = 该图 cheap patch 的 drop 正部分之和 / "
+            "该图 patch 总数（均匀摊平近似，不等于真实全图 PSNR 重算；正式结论需合成级联"
+            "输出后重算 PSNR）。",
         ],
     }
     (out_dir / "router_feature_report.json").write_text(
@@ -276,7 +336,19 @@ def main():
     lines.extend([
         "| oracle (perfect) | {:.1%} | 0 | {:.1f} | {:.3f}x |".format(
             1 - esc_frac, oracle_op["ms_per_image"], oracle_op["speedup"]),
-        "", "## Notes", ""] + ["- " + s for s in report["notes"]])
+        "", "## Image-level quality-budget operating points (combo score)", "",
+        "约束：容许漏检，但每图平均 PSNR 损失（cheap patch 的 drop 摊到全图）不超预算。", "",
+        "| budget (dB/img) | cheap % | mean loss | worst-img loss | ms/img | speedup |",
+        "|---:|---:|---:|---:|---:|---:|",
+    ])
+    for b in budget_rows:
+        if "note" in b:
+            lines.append("| {:.2f} | - | - | - | - | {} |".format(b["budget_db"], b["note"]))
+        else:
+            lines.append("| {:.2f} | {:.1%} | {:.4f} | {:.4f} | {:.1f} | {:.3f}x |".format(
+                b["budget_db"], b["cheap_fraction"], b["mean_image_loss_db"],
+                b["worst_image_loss_db"], b["ms_per_image"], b["speedup"]))
+    lines.extend(["", "## Notes", ""] + ["- " + s for s in report["notes"]])
     (out_dir / "router_feature_report.md").write_text("\n".join(lines))
 
     # enriched csv
