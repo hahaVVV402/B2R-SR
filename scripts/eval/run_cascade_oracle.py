@@ -6,7 +6,7 @@ router sent each LR patch either to a cheap path or to dense RCAN, what is
 the best achievable quality-matched latency?
 
 Cheap paths screened:
-  * bicubic     — imresize_np upscaling of the LR patch (near-zero cost)
+  * bicubic     — cv2.resize INTER_CUBIC upscaling of the LR patch (sub-ms CPU)
   * head-tail   — RCAN d=0 path (head + body-tail conv + upsampler)
 
 Per patch we compute PSNR-Y of each path against GT and against dense RCAN
@@ -47,7 +47,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "codes"))
 
 import utils.util as util  # noqa: E402
-from data.util import bgr2ycbcr, imresize_np, modcrop  # noqa: E402
+from data.util import bgr2ycbcr, modcrop  # noqa: E402
 from models.archs.RCAN_arch import RCAN  # noqa: E402
 
 
@@ -220,13 +220,13 @@ def main():
             timed(lambda: rcan(probe), args.warmup, args.runs, device))
         lat_headtail_patch = statistics.median(
             timed(lambda: headtail_forward(rcan, probe), args.warmup, args.runs, device))
-        # bicubic runs on CPU in this repo; measure wall time
-        probe_np = (np.random.rand(ps, ps, 3) * 255).astype(np.float32)
+        # bicubic cheap path: cv2.resize INTER_CUBIC (deployment-realistic, C++ CPU)
+        probe_u8 = (np.random.rand(ps, ps, 3) * 255).astype(np.uint8)
         t0 = time.perf_counter()
-        for _ in range(20):
-            imresize_np(probe_np / 255.0, scale, True)
-        lat_bicubic_patch = (time.perf_counter() - t0) / 20 * 1000.0
-        print("patch 级延迟: dense={:.3f} ms, headtail={:.3f} ms, bicubic(cpu)={:.3f} ms".format(
+        for _ in range(200):
+            cv2.resize(probe_u8, (ps * scale, ps * scale), interpolation=cv2.INTER_CUBIC)
+        lat_bicubic_patch = (time.perf_counter() - t0) / 200 * 1000.0
+        print("patch 级延迟: dense={:.3f} ms, headtail={:.3f} ms, bicubic(cv2)={:.4f} ms".format(
             lat_dense_patch, lat_headtail_patch, lat_bicubic_patch))
 
         # batched escalation latency per patch (batch=16), for honest upper bound
@@ -267,9 +267,9 @@ def main():
                 headtail_full = headtail_forward(rcan, lq_full)
             dense_img = tensor_to_img(dense_full)
             headtail_img = tensor_to_img(headtail_full)
-            bicubic_img = np.clip(imresize_np(
-                lr_img.astype(np.float32) / 255.0, scale, True) * 255.0,
-                0, 255).round().astype(np.uint8)
+            bicubic_img = cv2.resize(
+                lr_img, (lr_img.shape[1] * scale, lr_img.shape[0] * scale),
+                interpolation=cv2.INTER_CUBIC)
             del lq_full, dense_full, headtail_full
             torch.cuda.empty_cache()
 
@@ -373,7 +373,7 @@ def main():
                 "dense_patch_b1_ms": lat_dense_patch,
                 "dense_patch_b16_per_patch_ms": lat_dense_b16,
                 "headtail_patch_ms": lat_headtail_patch,
-                "bicubic_patch_cpu_ms": lat_bicubic_patch,
+                "bicubic_patch_cv2_ms": lat_bicubic_patch,
                 "warmup": args.warmup, "runs": args.runs,
             },
             "quality_summary": {
@@ -389,7 +389,7 @@ def main():
             "sg_alpha_verdicts_eps0.1": verdicts,
             "notes": [
                 "oracle 为零成本完美路由的上界；未计入 router 开销与 patch 边界处理。",
-                "escalation 延迟按 batch=16 dense patch 摊销；bicubic 为 CPU 时间。",
+                "escalation 延迟按 batch=16 dense patch 摊销；bicubic 为 cv2.resize INTER_CUBIC (CPU C++)。",
                 "SG-alpha 预注册门槛：eps=0.1 dB 时 oracle speedup >= 1.3x。",
             ],
         }
@@ -403,7 +403,7 @@ def main():
                 args.dataset_dir, len(pairs), n_patches, ps),
             "- device: {}".format(report["device"]),
             "- dense whole-image: {:.1f} ms".format(lat_dense_whole),
-            "- patch latencies: dense b1 {:.2f} / dense b16 {:.2f} / headtail {:.2f} / bicubic(cpu) {:.2f} ms".format(
+            "- patch latencies: dense b1 {:.2f} / dense b16 {:.2f} / headtail {:.2f} / bicubic(cv2) {:.4f} ms".format(
                 lat_dense_patch, lat_dense_b16, lat_headtail_patch, lat_bicubic_patch),
             "",
             "## Oracle ladders", "",
