@@ -36,18 +36,31 @@ from models.archs.RCAN_arch import RCAN  # noqa: E402
 
 
 def resolve_checkpoint(path_arg):
+    import tarfile
+    import tempfile
     candidates = []
     if path_arg:
         p = Path(path_arg).expanduser()
         if not p.exists():
             raise FileNotFoundError(p)
         candidates.append(p)
-    candidates.append(
-        ROOT / "experiments/remote_exports/B2RSR_RCAN_X4_120000_export/checkpoint/120000_G.pth")
+    candidates.extend([
+        ROOT / "experiments/remote_exports/B2RSR_RCAN_X4_120000_export/checkpoint/120000_G.pth",
+        Path("/home/featurize/data/B2RSR_RCAN_X4_120000_export.tar"),
+        Path("/home/featurize/work/B2RSR_RCAN_X4_120000_export.tar"),
+    ])
     src = next((c.resolve() for c in candidates if c.exists()), None)
     if src is None:
-        raise FileNotFoundError("未找到 checkpoint，用 --checkpoint 指定")
-    return src
+        raise FileNotFoundError("未找到 checkpoint，用 --checkpoint 指定 .pth 或 export .tar")
+    if src.suffix == ".pth":
+        return src
+    tmp = tempfile.mkdtemp(prefix="b2rsr-labels-")
+    with tarfile.open(src, "r") as archive:
+        archive.extractall(tmp)
+    matches = list(Path(tmp).rglob("*_G.pth"))
+    if len(matches) != 1:
+        raise RuntimeError("导出包中应恰好包含一个 *_G.pth")
+    return matches[0]
 
 
 def build_backbone(checkpoint, device):

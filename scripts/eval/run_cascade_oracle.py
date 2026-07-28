@@ -7,7 +7,8 @@ the best achievable quality-matched latency?
 
 Cheap paths screened:
   * bicubic     — cv2.resize INTER_CUBIC upscaling of the LR patch (sub-ms CPU)
-  * head-tail   — RCAN d=0 path (head + body-tail conv + upsampler)
+  * carn_m      — official pretrained CARN-M (nmhkahn), ~412K params, GPU
+  (head-tail RCAN d=0 was screened earlier and removed: 0% usable patches)
 
 Per patch we compute PSNR-Y of each path against GT and against dense RCAN
 output. The oracle keeps the cheap path when its quality loss vs dense RCAN
@@ -42,6 +43,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "codes"))
@@ -111,6 +114,152 @@ def build_backbone(checkpoint, device):
     for p in rcan.parameters():
         p.requires_grad = False
     return rcan.to(device)
+
+
+class _OfficialMeanShift(nn.Module):
+    def __init__(self, mean_rgb, sub):
+        super().__init__()
+        sign = -1 if sub else 1
+        r, g, b = mean_rgb
+        self.shifter = nn.Conv2d(3, 3, 1, 1, 0)
+        self.shifter.weight.data = torch.eye(3).view(3, 3, 1, 1)
+        self.shifter.bias.data = torch.Tensor([r * sign, g * sign, b * sign])
+        for p in self.shifter.parameters():
+            p.requires_grad = False
+
+    def forward(self, x):
+        return self.shifter(x)
+
+
+class _OfficialBasicBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, ksize=3, stride=1, pad=1):
+        super().__init__()
+        self.body = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, ksize, stride, pad),
+            nn.ReLU(inplace=True),
+        )
+
+    def forward(self, x):
+        return self.body(x)
+
+
+class _OfficialEResidualBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, group=1):
+        super().__init__()
+        self.body = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, 3, 1, 1, groups=group),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, 3, 1, 1, groups=group),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, 1, 1, 0),
+        )
+
+    def forward(self, x):
+        return F.relu(self.body(x) + x)
+
+
+class _OfficialUpsampleBlock(nn.Module):
+    def __init__(self, n_channels, scale, group=1):
+        super().__init__()
+        modules = []
+        if scale in (2, 4, 8):
+            for _ in range(int(np.log2(scale))):
+                modules += [nn.Conv2d(n_channels, 4 * n_channels, 3, 1, 1, groups=group),
+                            nn.PixelShuffle(2), nn.ReLU(inplace=True)]
+        elif scale == 3:
+            modules += [nn.Conv2d(n_channels, 9 * n_channels, 3, 1, 1, groups=group),
+                        nn.PixelShuffle(3), nn.ReLU(inplace=True)]
+        self.body = nn.Sequential(*modules)
+
+    def forward(self, x):
+        return self.body(x)
+
+
+class _OfficialMultiUpsample(nn.Module):
+    def __init__(self, n_channels, group=1):
+        super().__init__()
+        self.up2 = _OfficialUpsampleBlock(n_channels, 2, group)
+        self.up3 = _OfficialUpsampleBlock(n_channels, 3, group)
+        self.up4 = _OfficialUpsampleBlock(n_channels, 4, group)
+
+    def forward(self, x, scale):
+        return getattr(self, "up{}".format(scale))(x)
+
+
+class _OfficialCarnBlock(nn.Module):
+    def __init__(self, nf, group=1):
+        super().__init__()
+        self.b1 = _OfficialEResidualBlock(nf, nf, group=group)
+        self.c1 = _OfficialBasicBlock(nf * 2, nf, 1, 1, 0)
+        self.c2 = _OfficialBasicBlock(nf * 3, nf, 1, 1, 0)
+        self.c3 = _OfficialBasicBlock(nf * 4, nf, 1, 1, 0)
+
+    def forward(self, x):
+        c0 = o0 = x
+        b1 = self.b1(o0)
+        c1 = torch.cat([c0, b1], dim=1)
+        o1 = self.c1(c1)
+        b2 = self.b1(o1)
+        c2 = torch.cat([c1, b2], dim=1)
+        o2 = self.c2(c2)
+        b3 = self.b1(o2)
+        c3 = torch.cat([c2, b3], dim=1)
+        return self.c3(c3)
+
+
+class OfficialCARNM(nn.Module):
+    """Bit-exact module tree for nmhkahn/CARN-pytorch carn_m.pth."""
+
+    def __init__(self, group=4):
+        super().__init__()
+        nf = 64
+        self.sub_mean = _OfficialMeanShift((0.4488, 0.4371, 0.4040), sub=True)
+        self.add_mean = _OfficialMeanShift((0.4488, 0.4371, 0.4040), sub=False)
+        self.entry = nn.Conv2d(3, nf, 3, 1, 1)
+        self.b1 = _OfficialCarnBlock(nf, group)
+        self.b2 = _OfficialCarnBlock(nf, group)
+        self.b3 = _OfficialCarnBlock(nf, group)
+        self.c1 = _OfficialBasicBlock(nf * 2, nf, 1, 1, 0)
+        self.c2 = _OfficialBasicBlock(nf * 3, nf, 1, 1, 0)
+        self.c3 = _OfficialBasicBlock(nf * 4, nf, 1, 1, 0)
+        self.upsample = _OfficialMultiUpsample(nf, group)
+        self.exit = nn.Conv2d(nf, 3, 3, 1, 1)
+
+    def forward(self, x, scale=4):
+        # official CARN expects RGB in [0, 1]
+        x = self.sub_mean(x)
+        x = self.entry(x)
+        c0 = o0 = x
+        b1 = self.b1(o0)
+        c1 = torch.cat([c0, b1], dim=1)
+        o1 = self.c1(c1)
+        b2 = self.b2(o1)
+        c2 = torch.cat([c1, b2], dim=1)
+        o2 = self.c2(c2)
+        b3 = self.b3(o2)
+        c3 = torch.cat([c2, b3], dim=1)
+        o3 = self.c3(c3)
+        out = self.upsample(o3, scale)
+        out = self.exit(out)
+        return self.add_mean(out)
+
+
+def load_carn_m(device):
+    path = ROOT / "experiments/pre_trained_models/carn_m.pth"
+    if not path.exists():
+        import urllib.request
+        path.parent.mkdir(parents=True, exist_ok=True)
+        url = ("https://raw.githubusercontent.com/nmhkahn/CARN-pytorch/"
+               "master/checkpoint/carn_m.pth")
+        print("下载官方 CARN-M 权重: {}".format(url))
+        urllib.request.urlretrieve(url, str(path))
+    net = OfficialCARNM(group=4)
+    state = torch.load(str(path), map_location="cpu")
+    net.load_state_dict(state, strict=True)
+    net.eval()
+    for p in net.parameters():
+        p.requires_grad = False
+    return net.to(device)
 
 
 def headtail_forward(rcan, x):
@@ -216,19 +365,26 @@ def main():
         # ------------------------------------------------------------------
         # 1) per-patch-size latency of each path (fixed shapes, batch=1)
         # ------------------------------------------------------------------
+        carn = load_carn_m(device)
         probe = torch.rand(1, 3, ps, ps, device=device) * 255.0
+        probe01 = torch.rand(1, 3, ps, ps, device=device)
         lat_dense_patch = statistics.median(
             timed(lambda: rcan(probe), args.warmup, args.runs, device))
-        lat_headtail_patch = statistics.median(
-            timed(lambda: headtail_forward(rcan, probe), args.warmup, args.runs, device))
+        lat_carn_patch = statistics.median(
+            timed(lambda: carn(probe01), args.warmup, args.runs, device))
+        # carn batched (cheap path can batch too)
+        probe01_b16 = torch.rand(16, 3, ps, ps, device=device)
+        lat_carn_b16 = statistics.median(
+            timed(lambda: carn(probe01_b16), max(5, args.warmup // 2),
+                  max(20, args.runs // 2), device)) / 16.0
         # bicubic cheap path: cv2.resize INTER_CUBIC (deployment-realistic, C++ CPU)
         probe_u8 = (np.random.rand(ps, ps, 3) * 255).astype(np.uint8)
         t0 = time.perf_counter()
         for _ in range(200):
             cv2.resize(probe_u8, (ps * scale, ps * scale), interpolation=cv2.INTER_CUBIC)
         lat_bicubic_patch = (time.perf_counter() - t0) / 200 * 1000.0
-        print("patch 级延迟: dense={:.3f} ms, headtail={:.3f} ms, bicubic(cv2)={:.4f} ms".format(
-            lat_dense_patch, lat_headtail_patch, lat_bicubic_patch))
+        print("patch 级延迟: dense={:.3f} ms, carn_m(b1)={:.3f} ms, carn_m(b16)={:.3f} ms, bicubic(cv2)={:.4f} ms".format(
+            lat_dense_patch, lat_carn_patch, lat_carn_b16, lat_bicubic_patch))
 
         # batched escalation latency per patch (batch=16), for honest upper bound
         batch16 = torch.rand(16, 3, ps, ps, device=device) * 255.0
@@ -265,13 +421,13 @@ def main():
             lq_full = img_to_tensor(lr_img.astype(np.float32), device)
             with torch.no_grad():
                 dense_full = rcan(lq_full)
-                headtail_full = headtail_forward(rcan, lq_full)
+                carn_full = carn(lq_full / 255.0) * 255.0
             dense_img = tensor_to_img(dense_full)
-            headtail_img = tensor_to_img(headtail_full)
+            carn_img = tensor_to_img(carn_full)
             bicubic_img = cv2.resize(
                 lr_img, (lr_img.shape[1] * scale, lr_img.shape[0] * scale),
                 interpolation=cv2.INTER_CUBIC)
-            del lq_full, dense_full, headtail_full
+            del lq_full, dense_full, carn_full
             torch.cuda.empty_cache()
 
             h_lr, w_lr = lr_img.shape[:2]
@@ -281,15 +437,15 @@ def main():
                     gt_p = hr_img[hy:hy + hps, hx:hx + hps]
                     dense_p = dense_img[hy:hy + hps, hx:hx + hps]
                     bi_p = bicubic_img[hy:hy + hps, hx:hx + hps]
-                    ht_p = headtail_img[hy:hy + hps, hx:hx + hps]
+                    ca_p = carn_img[hy:hy + hps, hx:hx + hps]
                     rec = {
                         "image": hr_path.stem, "py": py, "px": px,
                         "dense_gt": psnr_y(dense_p, gt_p),
                         "bicubic_gt": psnr_y(bi_p, gt_p),
-                        "headtail_gt": psnr_y(ht_p, gt_p),
+                        "carn_gt": psnr_y(ca_p, gt_p),
                     }
                     rec["bicubic_drop"] = rec["dense_gt"] - rec["bicubic_gt"]
-                    rec["headtail_drop"] = rec["dense_gt"] - rec["headtail_gt"]
+                    rec["carn_drop"] = rec["dense_gt"] - rec["carn_gt"]
                     patch_records.append(rec)
                     csv_rows.append(rec)
             if (idx + 1) % 10 == 0:
@@ -307,7 +463,7 @@ def main():
             keep = sum(1 for r in patch_records if r[cheap_key + "_drop"] <= eps)
             frac_cheap = keep / n_patches
             cheap_ms = {"bicubic": lat_bicubic_patch,
-                        "headtail": lat_headtail_patch}[cheap_key]
+                        "carn_m": lat_carn_b16}[cheap_key]
             per_image_ms = patches_per_image * (
                 frac_cheap * cheap_ms + (1 - frac_cheap) * lat_dense_b16)
             return {
@@ -319,17 +475,17 @@ def main():
             }
 
         ladders = {}
-        for cheap_key in ("bicubic", "headtail"):
+        for cheap_key in ("bicubic", "carn_m"):
             ladders[cheap_key] = [oracle(cheap_key, e) for e in eps_list]
 
         # combined best-of-both cheap path
         combined = []
         for eps in eps_list:
             keep = sum(1 for r in patch_records
-                       if min(r["bicubic_drop"], r["headtail_drop"]) <= eps)
+                       if min(r["bicubic_drop"], r["carn_drop"]) <= eps)
             frac = keep / n_patches
             per_image_ms = patches_per_image * (
-                frac * max(lat_bicubic_patch, lat_headtail_patch)
+                frac * max(lat_bicubic_patch, lat_carn_b16)
                 + (1 - frac) * lat_dense_b16)
             combined.append({
                 "eps_db": eps, "cheap_fraction": frac,
@@ -373,24 +529,26 @@ def main():
                 "dense_whole_image_ms": lat_dense_whole,
                 "dense_patch_b1_ms": lat_dense_patch,
                 "dense_patch_b16_per_patch_ms": lat_dense_b16,
-                "headtail_patch_ms": lat_headtail_patch,
+                "carn_m_patch_b1_ms": lat_carn_patch,
+                "carn_m_patch_b16_per_patch_ms": lat_carn_b16,
                 "bicubic_patch_cv2_ms": lat_bicubic_patch,
                 "warmup": args.warmup, "runs": args.runs,
             },
             "quality_summary": {
                 "mean_dense_gt": mean([r["dense_gt"] for r in patch_records]),
                 "mean_bicubic_drop": mean([r["bicubic_drop"] for r in patch_records]),
-                "mean_headtail_drop": mean([r["headtail_drop"] for r in patch_records]),
+                "mean_carn_drop": mean([r["carn_drop"] for r in patch_records]),
                 "frac_bicubic_drop_le_0.1": sum(
                     1 for r in patch_records if r["bicubic_drop"] <= 0.1) / n_patches,
-                "frac_headtail_drop_le_0.1": sum(
-                    1 for r in patch_records if r["headtail_drop"] <= 0.1) / n_patches,
+                "frac_carn_drop_le_0.1": sum(
+                    1 for r in patch_records if r["carn_drop"] <= 0.1) / n_patches,
             },
             "oracle_ladders": ladders,
             "sg_alpha_verdicts_eps0.1": verdicts,
             "notes": [
                 "oracle 为零成本完美路由的上界；未计入 router 开销与 patch 边界处理。",
-                "escalation 延迟按 batch=16 dense patch 摊销；bicubic 为 cv2.resize INTER_CUBIC (CPU C++)。",
+                "escalation 按 batch=16 dense patch 摊销；carn_m 同按 batch=16 摊销；bicubic 为 cv2.resize INTER_CUBIC。",
+                "carn_m 为官方预训练权重（nmhkahn/CARN-pytorch），输入 RGB [0,1]。",
                 "SG-alpha 预注册门槛：eps=0.1 dB 时 oracle speedup >= 1.3x。",
             ],
         }
@@ -404,8 +562,8 @@ def main():
                 args.dataset_dir, len(pairs), n_patches, ps),
             "- device: {}".format(report["device"]),
             "- dense whole-image: {:.1f} ms".format(lat_dense_whole),
-            "- patch latencies: dense b1 {:.2f} / dense b16 {:.2f} / headtail {:.2f} / bicubic(cv2) {:.4f} ms".format(
-                lat_dense_patch, lat_dense_b16, lat_headtail_patch, lat_bicubic_patch),
+            "- patch latencies: dense b1 {:.2f} / dense b16 {:.2f} / carn_m b16 {:.3f} / bicubic(cv2) {:.4f} ms".format(
+                lat_dense_patch, lat_dense_b16, lat_carn_b16, lat_bicubic_patch),
             "",
             "## Oracle ladders", "",
         ]
