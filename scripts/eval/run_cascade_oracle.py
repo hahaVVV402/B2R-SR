@@ -124,9 +124,10 @@ def headtail_forward(rcan, x):
 
 
 def img_to_tensor(img_bgr, device):
-    # matches LQGT pipeline: BGR uint8 -> float [0,255] CHW
+    # matches LQGT_rcan pipeline: BGR->RGB, HWC->CHW, float [0,255]
+    img_rgb = img_bgr[:, :, [2, 1, 0]]
     tensor = torch.from_numpy(
-        np.ascontiguousarray(np.transpose(img_bgr, (2, 0, 1)))
+        np.ascontiguousarray(np.transpose(img_rgb, (2, 0, 1)))
     ).float().unsqueeze(0)
     return tensor.to(device)
 
