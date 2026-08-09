@@ -1,0 +1,29 @@
+name: EDSR_d24_formal
+output_root: experiments/EDSR_d24_formal
+
+execution:
+  train_all_before_test: true
+  resume: true
+  fail_fast: true
+
+runs:
+  - scale: 2
+    train_opt: codes/options/train/train_EDSR_d24_X2.yml
+    test_opt: codes/options/test/test_EDSR_d24_X2.yml
+    seeds: [0, 1, 2]
+  - scale: 3
+    train_opt: codes/options/train/train_EDSR_d24_X3.yml
+    test_opt: codes/options/test/test_EDSR_d24_X3.yml
+    seeds: [0, 1, 2]
+  - scale: 4
+    train_opt: codes/options/train/train_EDSR_d24_X4.yml
+    test_opt: codes/options/test/test_EDSR_d24_X4.yml
+    seeds: [0, 1, 2]
+
+selection:
+  checkpoint: best_val
+  metric: div2k_valid_psnr_y
+
+aggregate:
+  metrics: [psnr_y, ssim_y]
+  across_seeds: [mean, sample_std, ci95]

@@ -7,6 +7,7 @@ import models.archs.classSR_srresnet_arch as classSR_srresnet_arch
 import models.archs.RCAN_arch as RCAN_arch
 import models.archs.FSRCNN_arch as FSRCNN_arch
 import models.archs.CARN_arch as CARN_arch
+import models.archs.EDSR_arch as EDSR_arch
 import models.archs.dart_sr_plugin_arch as dart_sr_plugin_arch
 
 
@@ -29,6 +30,10 @@ def define_G(opt):
         netG = RCAN_arch.RCAN(n_resblocks=opt_net['n_resblocks'], n_feats=opt_net['n_feats'],
                               res_scale=opt_net['res_scale'], n_colors=opt_net['n_colors'],rgb_range=opt_net['rgb_range'],
                               scale=opt_net['scale'],reduction=opt_net['reduction'],n_resgroups=opt_net['n_resgroups'])
+    elif which_model == 'EDSR':
+        netG = EDSR_arch.EDSR(n_resblocks=opt_net['n_resblocks'], n_feats=opt_net['n_feats'],
+                              res_scale=opt_net['res_scale'], n_colors=opt_net.get('n_colors', 3),
+                              rgb_range=opt_net.get('rgb_range', 255), scale=opt_net['scale'])
     elif which_model == 'CARN_M':
         netG = CARN_arch.CARN_M(in_nc=opt_net['in_nc'], out_nc=opt_net['out_nc'],
                                        nf=opt_net['nf'], scale=opt_net['scale'], group=opt_net['group'])

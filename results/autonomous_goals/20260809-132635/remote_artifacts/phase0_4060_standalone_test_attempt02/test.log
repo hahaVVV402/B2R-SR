@@ -1,9 +1,0 @@
-checkpoint: /home/jww/WorkSpace/Research/B2R-SR/results/autonomous_goals/20260809-112351/remote_artifacts/phase4_pilot/pilot_student_x4_d24_step0100.pt
-checkpoint_sha256: a923f89a84092731355b9bf8bd2f1a0914a5714c5c71a17b830473d81c14c0d6
-model: canonical EDSR, depth=24, n_feats=256, scale=x4
-dataset: training_smoke, images=1
-
-sample: PSNR-Y=41.835449 dB, SSIM-Y=0.966696
-
-AVERAGE PSNR-Y: 41.835449 dB
-AVERAGE SSIM-Y: 0.966696

@@ -1,6 +1,6 @@
 # B2R-SR operational scripts
 
-> Current static-depth-transfer entrypoints are `eval/rethin_adapters.py`, `eval/run_rethin_mvp.py`, and `eval/summarize_rethin_mvp.py`. Dynamic routing, LUT cascade, posterior routing, segment distillation, cheap-block, width, and non-uniform-depth scripts are retained for historical reproducibility and are not active paper methods. New one-off experiments belong in their autonomous goal's `executed_source/`; only promoted reusable tools remain here.
+> Current static-depth-transfer entrypoints are the model-neutral `codes/train.py`, `codes/test.py`, and `codes/run.py`, driven by YAML under `codes/options/`. Dynamic routing, LUT cascade, posterior routing, segment distillation, cheap-block, width, and non-uniform-depth scripts are retained for historical reproducibility and are not active paper methods. New one-off experiments belong in their autonomous goal's `executed_source/`; only promoted reusable tools remain here.
 
 New operational helpers live here instead of adding more files to the repository root.
 Existing root entrypoints (`train_cloud.sh`, `prepare_cloud_data.sh`, and
@@ -8,22 +8,19 @@ Existing root entrypoints (`train_cloud.sh`, `prepare_cloud_data.sh`, and
 
 ## Active Featurize EDSR run
 
-The current one-command static EDSR-L package is frozen inside its owning goal:
+The repository-native workflow is documented in
+`docs/EDSR_Static_Depth_Experiment_Workflow_zh.md`. The formal wrapper is:
 
-```text
-results/autonomous_goals/20260809-132635/START_HERE.md
+```bash
+bash scripts/cloud/run_featurize.sh \
+  -opt codes/options/run/run_EDSR_d24_formal.yml
 ```
 
 It checks existing datasets without downloading them, strictly acquires official
-EDSR weights, runs the bounded three-scale recovery matrix, writes checkpoints and
-quality logs under the repository's ignored `experiments/` tree, exports a verified
-bundle under `/home/featurize/work`, and requests `featurize instance release`.
-Do not use legacy `train_cloud.sh` for the active method.
-
-For a conventional standalone test of one trained EDSR checkpoint, use
-`eval/test_edsr_checkpoint.py` with `--checkpoint`, `--scale`, `--dataset`, and
-`--experiment-dir`. It writes `summary.json`, `test.log`, per-image CSV/JSONL,
-and optional SR images under `<experiment-dir>/test/X<scale>/<dataset>/`.
+EDSR weights, delegates model-specific behavior to YAML-selected generic entrypoints,
+writes all runtime evidence under ignored `experiments/`, exports a verified bundle,
+and requests `featurize instance release`. Do not use legacy `train_cloud.sh` or the
+superseded goal-owned 500-step package for the active 200,000-update configuration.
 
 ## Export a completed cloud run
 

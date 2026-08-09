@@ -4,6 +4,24 @@
 
 The repository retains the original ClassSR pipeline and the stopped DART-SR plugin for baseline comparison and historical reproducibility. They are not the active paper method.
 
+## Current EDSR workflow
+
+Configure the machine-local data root once:
+
+```bash
+cp .env.example .env
+```
+
+Then use the model-neutral YAML entrypoints:
+
+```bash
+python codes/train.py -opt <train.yml>
+python codes/test.py -opt <test.yml>
+python codes/run.py -opt <run-plan.yml>
+```
+
+See [`docs/EDSR_Static_Depth_Experiment_Workflow_zh.md`](docs/EDSR_Static_Depth_Experiment_Workflow_zh.md). Generated checkpoints, logs, validation, and tests stay under ignored `experiments/`.
+
 ## Legacy ClassSR foundation
 
 (CVPR2021) ClassSR: A General Framework to Accelerate Super-Resolution Networks by Data Characteristic.

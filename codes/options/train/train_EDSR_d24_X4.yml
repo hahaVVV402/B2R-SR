@@ -1,0 +1,97 @@
+name: EDSR_d24_X4
+model: static_depth_recovery
+distortion: sr
+scale: 4
+gpu_ids: [0]
+
+network_G:
+  which_model_G: EDSR
+  n_resblocks: 24
+  n_feats: 256
+  res_scale: 0.1
+  n_colors: 3
+  rgb_range: 255
+  scale: 4
+
+teacher:
+  which_model_G: EDSR
+  n_resblocks: 32
+  n_feats: 256
+  res_scale: 0.1
+  n_colors: 3
+  rgb_range: 255
+  scale: 4
+  checkpoint:
+    url: https://cv.snu.ac.kr/research/EDSR/models/edsr_x4-4f62e9ef.pt
+    bytes: 172381555
+    sha256: 4f62e9ef1a4ec6a7d3da4ed837116cec641e4e1566f98187151d813e83a0c1c8
+
+initialization:
+  source: teacher
+  block_mapping: uniform_endpoints
+
+path:
+  teacher_checkpoint: experiments/pre_trained_models/EDSR/edsr_x4-4f62e9ef.pt
+
+# Training uses DIV2K IDs 0001-0760 from the existing DF2K subimage tree.
+datasets:
+  train:
+    name: DF2K_train
+    dataroot_GT: ${SR_DATA_ROOT}/DF2K/DF2K_train_HR_sub
+    dataroot_LQ: ${SR_DATA_ROOT}/DF2K/DF2K_train_LR_bicubic/X4_sub
+    id_range: [1, 760]
+    minimum_pairs: 10000
+    batch_size: 8
+    lr_patch_size: 48
+    preflight_max_pairs: 0
+  val:
+    name: DIV2K_valid
+    dataroot_GT: ${SR_DATA_ROOT}/DIV2K_valid_HR
+    dataroot_LQ: ${SR_DATA_ROOT}/DIV2K_valid_LR_bicubic/X4
+    expected_count: 100
+    preflight_max_pairs: 0
+
+train:
+  niter: 200000
+  manual_seed: 0
+  precision: fp32
+  optimizer:
+    type: Adam
+    lr: 1.0e-5
+    betas: [0.9, 0.999]
+    eps: 1.0e-8
+    weight_decay: 0
+  scheduler:
+    type: cosine
+    eta_min: 0
+  loss:
+    teacher_l1:
+      weight: 0.5
+    ground_truth_l1:
+      weight: 0.5
+
+validation:
+  enabled: true
+  evaluate_initial: true
+  interval: 5000
+  metrics: [psnr_y, ssim_y]
+  monitor: psnr_y
+  mode: max
+  save_best: true
+  select_by_test: false
+
+checkpoint:
+  save_last: true
+  save_best: true
+  rolling_resume_interval: 2000
+  keep_intermediate: false
+
+reproducibility:
+  cudnn_benchmark: false
+  cudnn_deterministic: true
+  tf32: false
+  amp: false
+
+logger:
+  print_freq: 100
+  trace_every_step: true

@@ -4,11 +4,67 @@ import logging
 import yaml
 from utils.util import OrderedYaml
 Loader, Dumper = OrderedYaml()
+REPO_ROOT = osp.abspath(osp.join(__file__, osp.pardir, osp.pardir, osp.pardir))
+
+
+def load_dotenv(root=REPO_ROOT):
+    """Load a repository .env once without overriding the process environment."""
+    path = osp.join(root, '.env')
+    if not osp.isfile(path):
+        return
+    with open(path, mode='r') as handle:
+        for number, raw in enumerate(handle, 1):
+            line = raw.strip()
+            if not line or line.startswith('#'):
+                continue
+            if line.startswith('export '):
+                line = line[7:].strip()
+            if '=' not in line:
+                raise ValueError('Invalid .env line {}: {}'.format(number, raw.rstrip()))
+            key, value = line.split('=', 1)
+            key, value = key.strip(), value.strip()
+            if (not key or not key.replace('_', '').isalnum()
+                    or key[0].isdigit()):
+                raise ValueError('Invalid .env key on line {}: {}'.format(number, key))
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            os.environ.setdefault(key, value)
+
+
+def _expand_environment(value):
+    if isinstance(value, dict):
+        return type(value)((key, _expand_environment(item)) for key, item in value.items())
+    if isinstance(value, list):
+        return [_expand_environment(item) for item in value]
+    if isinstance(value, str):
+        expanded = os.path.expandvars(os.path.expanduser(value))
+        if '${' in expanded:
+            raise ValueError('Unresolved environment variable in option: {}'.format(value))
+        return expanded
+    return value
+
+
+def load(opt_path):
+    load_dotenv()
+    with open(opt_path, mode='r') as handle:
+        opt = yaml.load(handle, Loader=Loader)
+    if not isinstance(opt, dict):
+        raise TypeError('Option file must contain a YAML mapping: {}'.format(opt_path))
+    return _expand_environment(opt)
+
+
+def dump(opt, path):
+    os.makedirs(osp.dirname(osp.abspath(path)), exist_ok=True)
+    temporary = path + '.tmp'
+    with open(temporary, mode='w') as handle:
+        yaml.dump(opt, handle, Dumper=Dumper, default_flow_style=False)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
 
 
 def parse(opt_path, is_train=True):
-    with open(opt_path, mode='r') as f:
-        opt = yaml.load(f, Loader=Loader)
+    opt = load(opt_path)
     # export CUDA_VISIBLE_DEVICES
     gpu_list = ','.join(str(x) for x in opt['gpu_ids'])
     os.environ['CUDA_VISIBLE_DEVICES'] = gpu_list
@@ -42,7 +98,7 @@ def parse(opt_path, is_train=True):
     for key, path in opt['path'].items():
         if path and key in opt['path'] and key != 'strict_load':
             opt['path'][key] = osp.expanduser(path)
-    opt['path']['root'] = osp.abspath(osp.join(__file__, osp.pardir, osp.pardir, osp.pardir))
+    opt['path']['root'] = REPO_ROOT
     if is_train:
         experiments_root = osp.join(opt['path']['root'], 'experiments', opt['name'])
         opt['path']['experiments_root'] = experiments_root

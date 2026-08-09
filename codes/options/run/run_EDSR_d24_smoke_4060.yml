@@ -1,0 +1,22 @@
+name: EDSR_d24_smoke_4060
+output_root: experiments/EDSR_d24_smoke_4060
+
+execution:
+  train_all_before_test: true
+  resume: true
+  fail_fast: true
+  final_benchmarks: false
+
+runs:
+  - scale: 4
+    train_opt: codes/options/train/train_EDSR_d24_X4_smoke.yml
+    test_opt: codes/options/test/test_EDSR_d24_X4_smoke.yml
+    seeds: [0]
+
+selection:
+  checkpoint: best_val
+  metric: recovery_smoke_psnr_y
+
+aggregate:
+  metrics: [psnr_y, ssim_y]
+  across_seeds: [mean]

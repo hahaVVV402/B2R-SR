@@ -1,6 +1,6 @@
 # B2R-SR Featurize 云端测试与训练指南
 
-> **当前入口（2026-08-09）：** `results/autonomous_goals/20260809-132635/START_HERE.md`。该入口运行静态 EDSR-L 32→24 的冻结500-step三尺度恢复，并自动校验、测试、导出和归还实例。生成的checkpoint、测试日志及PSNR-Y/SSIM-Y记录先保存在仓库内`experiments/EDSR_static_depth_20260809-132635/`，再复制进`/home/featurize/work/b2rsr_exports/`的校验归档。单checkpoint独立测试入口为`scripts/eval/test_edsr_checkpoint.py`。本文后续 `train_cloud.sh`、B2R-SR plugin和120000-step RCAN内容是历史动态路线，不能用于当前方法；仅存储目录、环境检查和`featurize instance release`原则仍适用。
+> **当前入口（2026-08-09）：** `docs/EDSR_Static_Depth_Experiment_Workflow_zh.md`。活动方案使用通用`codes/train.py`、`codes/test.py`、`codes/run.py`和尺度专属YAML；Featurize包装为`scripts/cloud/run_featurize.sh -opt codes/options/run/run_EDSR_d24_formal.yml`。正式配置是每组200,000次更新、DIV2K validation选择best、三尺度×三seed；生成内容只写入忽略的`experiments/EDSR_d24_formal/`并另行校验归档。旧Goal `20260809-132635`的500-step包未执行且已被本配置取代。本文后续`train_cloud.sh`、B2R-SR plugin和120000-step RCAN内容是历史动态路线，不能用于当前方法；仅存储目录、环境检查和`featurize instance release`原则仍适用。
 
 ## 1. 推荐策略
 

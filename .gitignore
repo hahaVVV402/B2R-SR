@@ -3,10 +3,11 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Virtual environments
+# Virtual environments and machine-local paths
 .venv/
 venv/
 env/
+.env
 
 # OS metadata
 .DS_Store

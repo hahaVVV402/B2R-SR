@@ -57,7 +57,7 @@ Use a rented RTX 4090 only after local packaging and 4060 feasibility checks pas
 - Prepare and review the exact launcher locally, then push it. On the instance, use `git pull --ff-only` and one goal-owned command; do not reconstruct formal commands interactively.
 - A launcher must check existing data rather than silently download/extract it, strictly verify any downloaded checkpoint, keep resumable state and logs in `work`, and export a hash-verified goal bundle.
 - Stop billing with `featurize instance release`; operating-system shutdown alone is not a confirmed billing stop. Persist success/failure status before requesting release.
-- Active formal package: `results/autonomous_goals/20260809-132635/START_HERE.md`. Legacy `train_cloud.sh` and the older Featurize guide describe the stopped dynamic RCAN path and must not launch the active EDSR method.
+- Active implementation record: `results/autonomous_goals/20260809-084626/goal.md`. The repository-native Featurize entrypoint is `scripts/cloud/run_featurize.sh -opt codes/options/run/run_EDSR_d24_formal.yml`; it is not promoted for formal execution until the RTX 4060 smoke and final review pass. Goal `20260809-132635` is the superseded, unexecuted 500-step package. Legacy `train_cloud.sh` must not launch the active EDSR method.
 
 ## Artifact placement
 

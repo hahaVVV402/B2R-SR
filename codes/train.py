@@ -28,11 +28,18 @@ def init_dist(backend='nccl', **kwargs):
 def main():
     #### options
     parser = argparse.ArgumentParser()
-    parser.add_argument('-opt', type=str, help='Path to option YAML file.')
+    parser.add_argument('-opt', type=str, required=True, help='Path to option YAML file.')
     parser.add_argument('--launcher', choices=['none', 'pytorch'], default='none',
                         help='job launcher')
     parser.add_argument('--local_rank', type=int, default=0)
     args = parser.parse_args()
+    raw_opt = option.load(args.opt)
+    if raw_opt.get('model') == 'static_depth_recovery':
+        if args.launcher != 'none':
+            parser.error('static_depth_recovery currently supports one GPU only')
+        from tasks.static_depth_recovery import train_from_options
+        train_from_options(args.opt)
+        return
     opt = option.parse(args.opt, is_train=True)
 
     opt_net = opt['network_G']

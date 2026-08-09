@@ -1,8 +1,8 @@
 # B2R-SR 当前项目状态（新会话唯一交接上下文）
 
 > 更新：2026-08-09
-> 状态：EDSR-L有界可行性Goal `20260809-112351`仍按冻结协议永久结束为STOP；用户已另行批准新Goal `20260809-132635`，用于三尺度500-step恢复与Featurize一键执行包。
-> 规则：先读根目录`AGENTS.md`和新Goal；新Goal不得修改、续跑或反向改写旧Goal事实。
+> 状态：EDSR-L有界可行性Goal `20260809-112351`仍按冻结协议永久结束为STOP；500-step Featurize包Goal `20260809-132635`未执行且已被后续配置取代。活动实现Goal为`20260809-084626`：仓库原生YAML train/test/run、正式配置每组200,000次更新、best-validation选择及RTX 4060短smoke。
+> 规则：先读根目录`AGENTS.md`和活动Goal；不得修改、续跑或反向改写旧Goal事实。完成代码和smoke不等于授权启动九组正式训练。
 
 ## 1. 当前主线
 
@@ -18,7 +18,7 @@ F2/F1、PConv、宽度和非均匀深度matched-latency实验均已完成，未�
 
 论文方法是架构感知的物理减深、顺序权重移植、固定预算Teacher-guided recovery和质量—真实延迟Pareto选择。RCAN仍是已验证锚点。canonical EDSR-L（32→24 blocks，×2/×3/×4）的Autonomous Goal `20260809-112351`已完成：三尺度checkpoint对齐、静态构造和RTX 4060无训练延迟均通过，×4 d24 p50 speedup为`1.217595×`；但100步Pilot的冻结loss稳定性条件失败，故旧Goal最终决策为**STOP**。
 
-用户随后显式批准新Goal `20260809-132635`。新Goal前瞻性取消不匹配随机crop的首尾loss Gate，改为仅在provenance/data/static-artifact/integrity失败、NaN/Inf或OOM时停止；固定运行×2/×3/×4、seeds 0/1/2、每组500 FP32 updates，并在全部final-step checkpoint冻结后统一评测。该授权不改变旧Goal的STOP记录，也不是120k-step长训练授权。
+用户随后批准并完成了Goal `20260809-132635`的500-step Featurize执行包准备，但未启动云端训练。进一步讨论后，用户决定不用该过渡包，另开Goal `20260809-084626`：公共入口改为通用`codes/train.py`、`codes/test.py`、`codes/run.py`，参数由尺度专属YAML管理；正式配置为×2/×3/×4、seeds 0/1/2、每组200,000 FP32 updates，每5,000步DIV2K validation并保存`best_val.pt`，所有训练冻结后才打开测试集。当前授权仅覆盖编码、review和RTX 4060 10-step pipeline smoke，不覆盖正式RTX 4090执行。
 
 ## 2. 已冻结的实验事实
 
@@ -90,10 +90,10 @@ RCAN不是唯一允许的模型，也不能代表全部SR骨干。它先用于�
 
 ### 当前新Goal允许
 
-- `20260809-132635`允许准备、review、commit并push Featurize执行包；由用户启动云实例后，执行冻结的×2/×3/×4、三seed、每组500-step恢复与冻结后质量评测；
-- 不得在`20260809-112351`下追加更新、续训或重跑Pilot；
+- `20260809-084626`允许实现、review、commit/push仓库原生YAML工作流，并在RTX 4060运行×4/seed0/10-step smoke及中断恢复检查；
+- 不得在`20260809-112351`或`20260809-132635`下追加更新、续训或重跑；
+- 正式YAML可以记录200,000-step计划，但未获得新的明确promotion前不得启动九组RTX 4090训练或打开最终benchmark；
 - RTX 4090只记录训练吞吐和质量，正式Student延迟随后回到统一RTX 4060栈重测；
-- 如需500步以外长训练、d28恢复或新骨干，仍需新的明确批准与冻结协议；
 - 按Abstract、Introduction、Related Work、Method、Experiments、Conclusion顺序重写论文；
 - 在`/Users/admin/Workspace/Research/DART-SR-Project/paper/figures/`维护draw.io/SVG/PDF论文图源。
 
@@ -111,13 +111,13 @@ RCAN不是唯一允许的模型，也不能代表全部SR骨干。它先用于�
 
 - Mac仓库：`/Users/admin/Workspace/Research/DART-SR-Project/code/B2R-SR`，负责编辑与编排；本地Python不可假定有Torch/CUDA。
 - RTX 4060 Laptop：`ssh 4060`；远端仓库`/home/jww/WorkSpace/Research/B2R-SR`；Python`/home/jww/miniconda3/envs/b2rsr/bin/python`；`/usr/lib/wsl/lib/nvidia-smi`。用于免费筛查、短pilot和目标延迟。
-- Featurize RTX 4090：仓库在`/home/featurize/work/B2R-SR`，数据在`/home/featurize/data`；当前训练与批量测试产物先写入仓库内忽略目录`experiments/EDSR_static_depth_20260809-132635/`，再归档到`/home/featurize/work/b2rsr_exports/`。单checkpoint测试入口为`scripts/eval/test_edsr_checkpoint.py`；完整入口见`results/autonomous_goals/20260809-132635/START_HERE.md`。结果验证后用`featurize instance release`归还；最终延迟必须回到统一目标设备完整重测。
+- Featurize RTX 4090：仓库在`/home/featurize/work/B2R-SR`，数据在`/home/featurize/data`；正式产物写入忽略目录`experiments/EDSR_d24_formal/`并归档到`/home/featurize/work/b2rsr_exports/`。通用入口是`codes/train.py`、`codes/test.py`、`codes/run.py`；平台包装是`scripts/cloud/run_featurize.sh`。完整说明见`docs/EDSR_Static_Depth_Experiment_Workflow_zh.md`。结果验证后用`featurize instance release`归还；最终延迟必须回到统一目标设备完整重测。
 - 完整操作与产物放置规则见根目录`AGENTS.md`；SSH恢复指南见`docs/B2RSR_4060_WSL2_SSH_Setup_zh.md`。
 
 ## 8. 新会话建议读取顺序
 
 1. `AGENTS.md`；
-2. `results/autonomous_goals/20260809-132635/goal.md`与`protocol.json`；
+2. `results/autonomous_goals/20260809-084626/goal.md`；
 3. `docs/PROJECT_STATE.md`（本文）；
 4. `results/autonomous_goals/20260809-112351/final_report.md`（不可改写的EDSR-L有界可行性STOP）；
 5. `results/autonomous_goals/20260803-215622/final_report.md`；

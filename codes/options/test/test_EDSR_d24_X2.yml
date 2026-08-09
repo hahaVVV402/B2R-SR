@@ -1,0 +1,56 @@
+name: EDSR_d24_X2_test
+model: sr
+test_backend: strict_sr
+distortion: sr
+scale: 2
+gpu_ids: [0]
+
+network_G:
+  which_model_G: EDSR
+  n_resblocks: 24
+  n_feats: 256
+  res_scale: 0.1
+  n_colors: 3
+  rgb_range: 255
+  scale: 2
+
+path:
+  pretrain_model_G: ~
+  strict_load: true
+
+datasets:
+  test1:
+    name: Set5
+    dataroot_GT: ${SR_DATA_ROOT}/SRBenchmarks/Set5/HR
+    dataroot_LQ: ${SR_DATA_ROOT}/SRBenchmarks/Set5/LR_bicubic/X2
+    expected_count: 5
+  test2:
+    name: Set14
+    dataroot_GT: ${SR_DATA_ROOT}/SRBenchmarks/Set14/HR
+    dataroot_LQ: ${SR_DATA_ROOT}/SRBenchmarks/Set14/LR_bicubic/X2
+    expected_count: 14
+  test3:
+    name: BSD100
+    dataroot_GT: ${SR_DATA_ROOT}/SRBenchmarks/BSD100/HR
+    dataroot_LQ: ${SR_DATA_ROOT}/SRBenchmarks/BSD100/LR_bicubic/X2
+    expected_count: 100
+  test4:
+    name: Urban100
+    dataroot_GT: ${SR_DATA_ROOT}/SRBenchmarks/Urban100/HR
+    dataroot_LQ: ${SR_DATA_ROOT}/SRBenchmarks/Urban100/LR_bicubic/X2
+    expected_count: 100
+  test5:
+    name: Manga109
+    dataroot_GT: ${SR_DATA_ROOT}/SRBenchmarks/Manga109/HR
+    dataroot_LQ: ${SR_DATA_ROOT}/SRBenchmarks/Manga109/LR_bicubic/X2
+    expected_count: 109
+
+test:
+  metrics: [psnr_y, ssim_y]
+  save_images: false
+  seed: 0
+
+reproducibility:
+  cudnn_benchmark: false
+  cudnn_deterministic: true
+  tf32: false
