@@ -1,5 +1,7 @@
 # B2R-SR Featurize 云端测试与训练指南
 
+> **当前入口（2026-08-09）：** `results/autonomous_goals/20260809-132635/START_HERE.md`。该入口运行静态 EDSR-L 32→24 的冻结500-step三尺度恢复，并自动校验、导出和归还实例。本文后续 `train_cloud.sh`、B2R-SR plugin和120000-step RCAN内容是历史动态路线，不能用于当前方法；仅存储目录、环境检查和`featurize instance release`原则仍适用。
+
 ## 1. 推荐策略
 
 由于 DF2K 超过 100GB，而 Featurize 的 `/home/featurize/data` 会在实例归还或重置后清空，不建议在便宜实例上完整解压数据后再更换 GPU。推荐分成两个阶段：

@@ -1,10 +1,10 @@
 # B2R-SR
 
-**Benefit- and Budget-Aware Dynamic Routing for Efficient Image Super-Resolution**
+> **Current research status:** the dynamic window-routing prototype described in the legacy README below is stopped. The active direction converts pretrained CNN-SR checkpoints into physically shallower, attachment-free static Students through topology-valid depth transfer, ordered weight transplantation, fixed-budget recovery, and measured quality--latency selection. Read `AGENTS.md` and `docs/PROJECT_STATE.md` before running experiments.
 
-B2R-SR is a plug-and-play acceleration framework that allocates stage-wise computation to spatial windows according to predicted reconstruction benefit under a controllable compute budget. This research implementation is built on the official ClassSR codebase; the original ClassSR pipeline remains available for baseline comparison and reproducibility.
+The repository retains the original ClassSR pipeline and the stopped DART-SR plugin for baseline comparison and historical reproducibility. They are not the active paper method.
 
-## ClassSR foundation
+## Legacy ClassSR foundation
 
 (CVPR2021) ClassSR: A General Framework to Accelerate Super-Resolution Networks by Data Characteristic.
 

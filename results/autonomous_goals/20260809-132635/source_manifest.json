@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "goal_id": "20260809-132635",
+  "created_at_utc": "2026-08-09T06:25:11Z",
+  "files": {
+    "START_HERE.md": "3ba5ee7ed60577bdd2aad36d2d6796cc232a1bf2151ce2e257869580dee9bacb",
+    "executed_source/formal_recovery.py": "ea7351aadbb954582e9bbc5222eeeb00eb1e1296eb2f906a19dd9fc78793c787",
+    "executed_source/run_featurize.sh": "923f53d947565c8f86d16a51177e6a9e26b123e80b202eeed4a1a668bfecedc5",
+    "goal.md": "1835edf9a783d0a841c6d0ff49f1da445f24f4f1a0b3bfb79e3d2fafd33a67cb",
+    "protocol.json": "ae05cb0ada529f41fb2c56af253e3449eb90db90b6f0e10ddb22e05686ca9ce4"
+  },
+  "bytes": {
+    "START_HERE.md": 1873,
+    "executed_source/formal_recovery.py": 73582,
+    "executed_source/run_featurize.sh": 12051,
+    "goal.md": 4147,
+    "protocol.json": 7795
+  }
+}

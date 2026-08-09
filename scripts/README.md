@@ -1,8 +1,23 @@
 # B2R-SR operational scripts
 
+> Current static-depth-transfer entrypoints are `eval/rethin_adapters.py`, `eval/run_rethin_mvp.py`, and `eval/summarize_rethin_mvp.py`. Dynamic routing, LUT cascade, posterior routing, segment distillation, cheap-block, width, and non-uniform-depth scripts are retained for historical reproducibility and are not active paper methods. New one-off experiments belong in their autonomous goal's `executed_source/`; only promoted reusable tools remain here.
+
 New operational helpers live here instead of adding more files to the repository root.
 Existing root entrypoints (`train_cloud.sh`, `prepare_cloud_data.sh`, and
 `prepare_pretrained.sh`) remain in place for compatibility.
+
+## Active Featurize EDSR run
+
+The current one-command static EDSR-L package is frozen inside its owning goal:
+
+```text
+results/autonomous_goals/20260809-132635/START_HERE.md
+```
+
+It checks existing datasets without downloading them, strictly acquires official
+EDSR weights, runs the bounded three-scale recovery matrix, exports a verified
+bundle under `/home/featurize/work`, and requests `featurize instance release`.
+Do not use legacy `train_cloud.sh` for the active method.
 
 ## Export a completed cloud run
 
