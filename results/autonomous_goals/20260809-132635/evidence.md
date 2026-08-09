@@ -43,4 +43,11 @@ Attempt 01 used the prior reviewed source freeze and is preserved separately; at
 - `subagents/implementation_review.md` and `freeze_review.md` identified persistence, resume, evaluation, checksum, signal, and bundle-validation defects; all launch blockers/high findings were fixed before the final freeze.
 - `subagents/final_package_review.md`: **READY FOR SELECTIVE COMMIT/PUSH**, no launch-blocking defect found.
 
-Pending: selective commit/push and the user-triggered Featurize run. No formal cloud quality result exists yet.
+### GitHub delivery
+
+- Selective package commit: `681d0cd14a9eedad7cbb8d63140decbf8010b8de` (`Add Featurize EDSR recovery workflow`).
+- Push: `origin/main` advanced from `979213f` to `681d0cd`.
+- Post-push `git ls-remote origin refs/heads/main` returned the exact local commit hash.
+- Pre-existing unrelated local worktree changes were neither staged nor committed.
+
+Pending: the user-triggered Featurize run. No formal cloud quality result exists yet.

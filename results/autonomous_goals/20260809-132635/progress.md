@@ -9,4 +9,5 @@
 - Local syntax/self-test and structured-bundle checks passed.
 - Exact-source RTX 4060 attempt-02 smoke passed two finite CUDA updates, static audit, strict checkpoint round-trip, and finite forward.
 - Three independent review rounds found and then cleared launch blockers; final review says `READY FOR SELECTIVE COMMIT/PUSH`.
-- Pending: selective commit and push. Cloud execution has not started; no GPU rental or final benchmark has been opened by the local agent.
+- Selectively committed and pushed the package and maintained state docs: commit `681d0cd14a9eedad7cbb8d63140decbf8010b8de`; GitHub `origin/main` independently resolved to the same hash.
+- Package phase is complete. Pending: the user-triggered Featurize run and copy-back audit. Cloud execution has not started; no GPU rental or final benchmark has been opened by the local agent.
