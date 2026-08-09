@@ -18,7 +18,8 @@ import cv2
 import numpy as np
 import torch
 
-from data.strict_paired import pair_directories, read_pair, sample_batch, validate_pairs
+from data.strict_paired import (DeterministicBatchPrefetcher, pair_directories,
+                                read_pair, sample_batch, validate_pairs)
 from models import networks
 from models.archs.EDSR_arch import (EDSR, strict_load, tensor_state,
                                     transplant_edsr, uniform_endpoint_indices)
@@ -33,6 +34,17 @@ FORBIDDEN_DEPLOYMENT_TERMS = ('teacher', 'router', 'mask', 'keep_map', 'keepmap'
 
 def utc_now():
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
+
+
+def format_duration(seconds):
+    seconds = max(0, int(seconds))
+    hours, remainder = divmod(seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return '{:02d}:{:02d}:{:02d}'.format(hours, minutes, seconds)
+
+
+def percentile(values, value):
+    return float(np.percentile(values, value)) if values else None
 
 
 def sha256_file(path, chunk_size=1024 * 1024):
@@ -343,15 +355,15 @@ def _restore_resume_best(resume, best_path):
     return best_state
 
 
-def _save_resume(path, step, config_hash, student, optimizer, scheduler, rng,
-                 best_score, best_step, best_state):
+def _save_resume(path, step, config_hash, student, optimizer, scheduler,
+                 sampling_rng_state, best_score, best_step, best_state):
     atomic_torch_save({
         'step': step,
         'config_sha256': config_hash,
         'student': _state_cpu(student),
         'optimizer': optimizer.state_dict(),
         'scheduler': scheduler.state_dict(),
-        'sampling_rng_state': rng.getstate(),
+        'sampling_rng_state': sampling_rng_state,
         'python_rng_state': random.getstate(),
         'numpy_rng_state': np.random.get_state(),
         'torch_rng_state': torch.get_rng_state(),
@@ -483,11 +495,22 @@ def train_from_options(option_path):
     ground_truth_weight = float(opt['train']['loss']['ground_truth_l1']['weight'])
     batch_size = int(train_data['batch_size'])
     patch = int(train_data['lr_patch_size'])
+    prefetch_batches = int(opt['train'].get('prefetch_batches', 0))
+    if prefetch_batches not in (0, 1):
+        raise ValueError('train.prefetch_batches must be 0 or 1')
     started_at = utc_now()
     wall_start = time.time()
-    _log(experiment, 'start/resume x{} seed{} at step {}/{}'.format(
-        scale, seed, completed_step, niter))
-    timings = [float(row.get('step_wall_ms', row.get('gpu_step_ms'))) for row in trace_records]
+    _log(experiment, 'start/resume x{} seed{} at step {}/{} prefetch={}'.format(
+        scale, seed, completed_step, niter, prefetch_batches))
+    timings = [float(row.get('train_step_wall_ms',
+                             row.get('step_wall_ms', row.get('gpu_step_ms'))))
+               for row in trace_records]
+    input_timings = [float(row['input_wait_ms']) for row in trace_records
+                     if 'input_wait_ms' in row]
+    h2d_timings = [float(row['h2d_ms']) for row in trace_records if 'h2d_ms' in row]
+    gpu_timings = [float(row['gpu_step_ms']) for row in trace_records
+                   if 'gpu_step_ms' in row]
+    committed_sampling_rng_state = rng.getstate()
     failure_path = experiment / 'failure.json'
     try:
         torch.cuda.reset_peak_memory_stats()
@@ -501,59 +524,100 @@ def train_from_options(option_path):
             _log(experiment, 'initial validation PSNR-Y={:.6f} SSIM-Y={:.6f}'.format(
                 best_score, float(initial_validation['mean_ssim_y'])))
             _save_resume(resume_path, 0, config_hash, student, optimizer, scheduler,
-                         rng, best_score, best_step, best_state)
-        with trace_path.open('a', encoding='utf-8', buffering=1) as trace:
-            for step in range(completed_step + 1, invocation_stop + 1):
-                lr_cpu, hr_cpu, sample_keys = sample_batch(
-                    train_pairs, scale, batch_size, patch, rng)
-                lr, hr = lr_cpu.to(device), hr_cpu.to(device)
-                start = time.perf_counter()
-                used_lr = float(optimizer.param_groups[0]['lr'])
-                optimizer.zero_grad(set_to_none=True)
-                with torch.no_grad():
-                    teacher_output = teacher(lr)
-                student_output = student(lr)
-                teacher_l1 = torch.nn.functional.l1_loss(student_output, teacher_output)
-                gt_l1 = torch.nn.functional.l1_loss(student_output, hr)
-                total_loss = teacher_weight * teacher_l1 + ground_truth_weight * gt_l1
-                if not bool(torch.isfinite(total_loss)):
-                    raise FloatingPointError('Non-finite loss at step {}'.format(step))
-                total_loss.backward()
-                optimizer.step()
-                scheduler.step()
-                if device.type == 'cuda':
-                    torch.cuda.synchronize()
-                elapsed_ms = (time.perf_counter() - start) * 1000.0
-                timings.append(elapsed_ms)
-                completed_step = step
-                row = {'step': step, 'sample_keys': sample_keys,
-                       'total_loss': float(total_loss.detach()),
-                       'teacher_l1': float(teacher_l1.detach()),
-                       'gt_l1': float(gt_l1.detach()),
-                       'learning_rate': used_lr, 'step_wall_ms': elapsed_ms}
-                trace.write(json.dumps(row, sort_keys=True, allow_nan=False) + '\n')
-                if step % int((opt.get('logger') or {}).get('print_freq', 100)) == 0 or step == invocation_stop:
-                    _log(experiment, 'step {}/{} loss={:.6f} teacher_l1={:.6f} gt_l1={:.6f} lr={:.3e}'.format(
-                        step, niter, row['total_loss'], row['teacher_l1'], row['gt_l1'], used_lr))
-                validation_due = step % validation_interval == 0 or step == niter
-                if validation_due:
-                    result = _validation(student, val_pairs, scale, device, val_dir, step)
-                    score = float(result['mean_psnr_y_db'])
-                    if score > best_score:
-                        best_score, best_step = score, step
-                        best_state = _state_cpu(student)
-                        atomic_torch_save(best_state, best_path)
-                    _log(experiment, 'validation step {} PSNR-Y={:.6f} SSIM-Y={:.6f} best_step={}'.format(
-                        step, score, float(result['mean_ssim_y']), best_step))
-                if step % resume_interval == 0 or validation_due or step == invocation_stop:
-                    trace.flush()
-                    os.fsync(trace.fileno())
-                    if best_state is None:
-                        raise RuntimeError('Cannot save resume without a selected best checkpoint')
-                    _save_resume(resume_path, step, config_hash, student, optimizer,
-                                 scheduler, rng, best_score, best_step, best_state)
-                del lr_cpu, hr_cpu, lr, hr, teacher_output, student_output
-                del teacher_l1, gt_l1, total_loss
+                         committed_sampling_rng_state, best_score, best_step, best_state)
+        def load_batch(batch_rng):
+            return sample_batch(train_pairs, scale, batch_size, patch, batch_rng)
+
+        batches = DeterministicBatchPrefetcher(load_batch, rng) if prefetch_batches else None
+        if batches is not None:
+            batches.__enter__()
+        try:
+            with trace_path.open('a', encoding='utf-8', buffering=1024 * 1024) as trace:
+                for step in range(completed_step + 1, invocation_stop + 1):
+                    step_started = time.perf_counter()
+                    if batches is None:
+                        batch = load_batch(rng)
+                        committed_sampling_rng_state = rng.getstate()
+                    else:
+                        batch, committed_sampling_rng_state = batches.get()
+                    lr_cpu, hr_cpu, sample_keys = batch
+                    input_wait_ms = (time.perf_counter() - step_started) * 1000.0
+                    h2d_started = time.perf_counter()
+                    lr, hr = lr_cpu.to(device), hr_cpu.to(device)
+                    h2d_ms = (time.perf_counter() - h2d_started) * 1000.0
+                    gpu_started = time.perf_counter()
+                    used_lr = float(optimizer.param_groups[0]['lr'])
+                    optimizer.zero_grad(set_to_none=True)
+                    with torch.no_grad():
+                        teacher_output = teacher(lr)
+                    student_output = student(lr)
+                    teacher_l1 = torch.nn.functional.l1_loss(student_output, teacher_output)
+                    gt_l1 = torch.nn.functional.l1_loss(student_output, hr)
+                    total_loss = teacher_weight * teacher_l1 + ground_truth_weight * gt_l1
+                    if not bool(torch.isfinite(total_loss)):
+                        raise FloatingPointError('Non-finite loss at step {}'.format(step))
+                    total_loss.backward()
+                    optimizer.step()
+                    scheduler.step()
+                    if device.type == 'cuda':
+                        torch.cuda.synchronize()
+                    gpu_step_ms = (time.perf_counter() - gpu_started) * 1000.0
+                    train_step_ms = (time.perf_counter() - step_started) * 1000.0
+                    timings.append(train_step_ms)
+                    input_timings.append(input_wait_ms)
+                    h2d_timings.append(h2d_ms)
+                    gpu_timings.append(gpu_step_ms)
+                    completed_step = step
+                    row = {'step': step, 'sample_keys': sample_keys,
+                           'total_loss': float(total_loss.detach()),
+                           'teacher_l1': float(teacher_l1.detach()),
+                           'gt_l1': float(gt_l1.detach()),
+                           'learning_rate': used_lr,
+                           'input_wait_ms': input_wait_ms,
+                           'h2d_ms': h2d_ms,
+                           'gpu_step_ms': gpu_step_ms,
+                           'train_step_wall_ms': train_step_ms,
+                           'step_wall_ms': train_step_ms}
+                    trace.write(json.dumps(row, sort_keys=True, allow_nan=False) + '\n')
+                    if (step % int((opt.get('logger') or {}).get('print_freq', 100)) == 0
+                            or step == invocation_stop):
+                        recent_steps = timings[-100:]
+                        median_step = statistics.median(recent_steps)
+                        images_per_second = batch_size * 1000.0 / median_step
+                        eta_seconds = (niter - step) * statistics.mean(recent_steps) / 1000.0
+                        _log(experiment, ('step {}/{} ({:.2f}%) loss={:.6f} teacher_l1={:.6f} '
+                                          'gt_l1={:.6f} lr={:.3e} input={:.1f}ms gpu={:.1f}ms '
+                                          'step={:.1f}ms throughput={:.2f}img/s train_eta={}').format(
+                                              step, niter, 100.0 * step / niter,
+                                              row['total_loss'], row['teacher_l1'],
+                                              row['gt_l1'], used_lr,
+                                              statistics.median(input_timings[-100:]),
+                                              statistics.median(gpu_timings[-100:]),
+                                              median_step, images_per_second,
+                                              format_duration(eta_seconds)))
+                    validation_due = step % validation_interval == 0 or step == niter
+                    if validation_due:
+                        result = _validation(student, val_pairs, scale, device, val_dir, step)
+                        score = float(result['mean_psnr_y_db'])
+                        if score > best_score:
+                            best_score, best_step = score, step
+                            best_state = _state_cpu(student)
+                            atomic_torch_save(best_state, best_path)
+                        _log(experiment, 'validation step {} PSNR-Y={:.6f} SSIM-Y={:.6f} best_step={}'.format(
+                            step, score, float(result['mean_ssim_y']), best_step))
+                    if step % resume_interval == 0 or validation_due or step == invocation_stop:
+                        trace.flush()
+                        os.fsync(trace.fileno())
+                        if best_state is None:
+                            raise RuntimeError('Cannot save resume without a selected best checkpoint')
+                        _save_resume(resume_path, step, config_hash, student, optimizer,
+                                     scheduler, committed_sampling_rng_state,
+                                     best_score, best_step, best_state)
+                    del lr_cpu, hr_cpu, lr, hr, teacher_output, student_output
+                    del teacher_l1, gt_l1, total_loss
+        finally:
+            if batches is not None:
+                batches.close()
 
         if invocation_stop < niter:
             print(json.dumps({'status': 'paused', 'experiment': str(experiment),
@@ -596,8 +660,17 @@ def train_from_options(option_path):
                            'bytes': resume_path.stat().st_size},
             },
             'training': {'wall_seconds': time.time() - wall_start,
-                         'step_p50_ms': float(np.percentile(timings, 50)),
-                         'step_p95_ms': float(np.percentile(timings, 95)),
+                         'prefetch_batches': prefetch_batches,
+                         'step_p50_ms': percentile(timings, 50),
+                         'step_p95_ms': percentile(timings, 95),
+                         'input_wait_p50_ms': percentile(input_timings, 50),
+                         'input_wait_p95_ms': percentile(input_timings, 95),
+                         'h2d_p50_ms': percentile(h2d_timings, 50),
+                         'h2d_p95_ms': percentile(h2d_timings, 95),
+                         'gpu_step_p50_ms': percentile(gpu_timings, 50),
+                         'gpu_step_p95_ms': percentile(gpu_timings, 95),
+                         'images_per_second_at_step_p50': (
+                             batch_size * 1000.0 / percentile(timings, 50)),
                          'peak_allocated_bytes': torch.cuda.max_memory_allocated(),
                          'peak_reserved_bytes': torch.cuda.max_memory_reserved(),
                          'trace_sha256': sha256_file(trace_path)},

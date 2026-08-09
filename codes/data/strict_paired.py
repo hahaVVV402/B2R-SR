@@ -5,12 +5,82 @@ import json
 import random
 import re
 from pathlib import Path
+from queue import Empty, Full, Queue
+from threading import BoundedSemaphore, Event, Thread
 
 import cv2
 import numpy as np
 import torch
 
 IMAGE_SUFFIXES = {'.png', '.jpg', '.jpeg', '.bmp'}
+
+
+class DeterministicBatchPrefetcher:
+    """Prepare one future batch while committing RNG state only on consumption."""
+
+    def __init__(self, load_batch, rng):
+        self._load_batch = load_batch
+        self._rng = rng
+        self._queue = Queue(maxsize=1)
+        self._slot = BoundedSemaphore(1)
+        self._stop = Event()
+        self._thread = Thread(target=self._produce, name='sr-batch-prefetch', daemon=True)
+        self._started = False
+
+    def __enter__(self):
+        self._thread.start()
+        self._started = True
+        return self
+
+    def __exit__(self, *_):
+        self.close()
+
+    def _produce(self):
+        while not self._stop.is_set():
+            if not self._slot.acquire(timeout=0.1):
+                continue
+            if self._stop.is_set():
+                self._slot.release()
+                break
+            try:
+                item = (self._load_batch(self._rng), self._rng.getstate(), None)
+            except BaseException as error:
+                item = (None, None, (error, error.__traceback__))
+            placed = False
+            while not self._stop.is_set():
+                try:
+                    self._queue.put(item, timeout=0.1)
+                    placed = True
+                    break
+                except Full:
+                    pass
+            if not placed:
+                self._slot.release()
+            if item[2] is not None:
+                break
+
+    def get(self):
+        if not self._started:
+            raise RuntimeError('Batch prefetcher is not started')
+        while True:
+            try:
+                value, rng_state, failure = self._queue.get(timeout=0.1)
+            except Empty:
+                if not self._thread.is_alive():
+                    raise RuntimeError('Batch prefetcher stopped without a result')
+                continue
+            self._slot.release()
+            if failure is not None:
+                error, traceback = failure
+                raise error.with_traceback(traceback)
+            return value, rng_state
+
+    def close(self):
+        self._stop.set()
+        if self._started:
+            self._thread.join(timeout=5)
+            if self._thread.is_alive():
+                raise RuntimeError('Batch prefetcher did not stop within 5 seconds')
 
 
 def image_files(directory):

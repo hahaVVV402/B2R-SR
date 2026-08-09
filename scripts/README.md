@@ -8,6 +8,10 @@ Existing root entrypoints (`train_cloud.sh`, `prepare_cloud_data.sh`, and
 
 ## Active Featurize EDSR run
 
+The formal EDSR YAMLs use the deterministic one-batch prefetch path validated by
+the RTX 4060 sync/prefetch and interruption-resume checks. Progress logs report
+input wait, GPU time, end-to-end step cadence, throughput, percentage, and ETA.
+
 The repository-native workflow is documented in
 `docs/EDSR_Static_Depth_Experiment_Workflow_zh.md`. The formal wrapper is:
 

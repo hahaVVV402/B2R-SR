@@ -1,8 +1,8 @@
 # B2R-SR 当前项目状态（新会话唯一交接上下文）
 
 > 更新：2026-08-09
-> 状态：EDSR-L有界可行性Goal `20260809-112351`仍按冻结协议永久结束为STOP；500-step Featurize包Goal `20260809-132635`未执行且已被后续配置取代。活动实现Goal为`20260809-084626`：仓库原生YAML train/test/run、正式配置每组200,000次更新、best-validation选择及RTX 4060短smoke。
-> 规则：先读根目录`AGENTS.md`和活动Goal；不得修改、续跑或反向改写旧Goal事实。完成代码和smoke不等于授权启动九组正式训练。
+> 状态：EDSR-L有界可行性Goal `20260809-112351`仍按冻结协议永久结束为STOP；500-step Featurize包Goal `20260809-132635`未执行且已被后续配置取代。YAML工作流Goal `20260809-084626`已由commit `f650b908deb9927958e631efb35f46705e6b0c03`交付。性能Goal `20260809-184846`完成4060精确性证据后被用户跳过其4090 A/B Gate。当前活动Goal为`20260809-194839`：promotion确定性预取并由用户直接启动九组正式恢复训练。
+> 规则：先读根目录`AGENTS.md`和活动Goal；不得修改、续跑或反向改写旧Goal事实。正式测试集仍只能在九组训练全部冻结后由plan自动打开。
 
 ## 1. 当前主线
 
@@ -18,7 +18,7 @@ F2/F1、PConv、宽度和非均匀深度matched-latency实验均已完成，未�
 
 论文方法是架构感知的物理减深、顺序权重移植、固定预算Teacher-guided recovery和质量—真实延迟Pareto选择。RCAN仍是已验证锚点。canonical EDSR-L（32→24 blocks，×2/×3/×4）的Autonomous Goal `20260809-112351`已完成：三尺度checkpoint对齐、静态构造和RTX 4060无训练延迟均通过，×4 d24 p50 speedup为`1.217595×`；但100步Pilot的冻结loss稳定性条件失败，故旧Goal最终决策为**STOP**。
 
-用户随后批准并完成了Goal `20260809-132635`的500-step Featurize执行包准备，但未启动云端训练。进一步讨论后，用户决定不用该过渡包，另开Goal `20260809-084626`：公共入口改为通用`codes/train.py`、`codes/test.py`、`codes/run.py`，参数由尺度专属YAML管理；正式配置为×2/×3/×4、seeds 0/1/2、每组200,000 FP32 updates，每5,000步DIV2K validation并保存`best_val.pt`，所有训练冻结后才打开测试集。当前授权仅覆盖编码、review和RTX 4060 10-step pipeline smoke，不覆盖正式RTX 4090执行。
+用户随后批准并完成了Goal `20260809-132635`的500-step Featurize执行包准备，但未启动云端训练。进一步讨论后，用户决定不用该过渡包，另开Goal `20260809-084626`：公共入口改为通用`codes/train.py`、`codes/test.py`、`codes/run.py`，参数由尺度专属YAML管理；正式配置为×2/×3/×4、seeds 0/1/2、每组200,000 FP32 updates，每5,000步DIV2K validation并保存`best_val.pt`，所有训练冻结后才打开测试集。该实现与RTX 4060 pipeline smoke已交付。随后Goal `20260809-184846`在不改变FP32、batch、crop、loss、scheduler、seed或选择协议的前提下增加确定性单batch预取和真实吞吐/ETA。最新精确源4060检查中，sync与prefetch及prefetch中断恢复的样本、loss、LR、best/last tensor和已提交采样RNG完全一致；排除两步warm-up后的step p50由`1593.772141 ms`降至`937.860726 ms`（`1.699370×`，仅诊断）。用户随后明确判定四次4090 100-step A/B不值得额外时间，并在Goal `20260809-194839`选择“启用预取后直接正式训练”。正式YAML现为`prefetch_batches: 1`；4090实际提速幅度未知，但九组正式执行已获用户promotion。
 
 ## 2. 已冻结的实验事实
 
@@ -90,9 +90,10 @@ RCAN不是唯一允许的模型，也不能代表全部SR骨干。它先用于�
 
 ### 当前新Goal允许
 
-- `20260809-084626`允许实现、review、commit/push仓库原生YAML工作流，并在RTX 4060运行×4/seed0/10-step smoke及中断恢复检查；
+- `20260809-194839`允许review、commit/push已通过4060精确性验证的确定性预取与进度/计时，并由用户在RTX 4090启动正式九组训练；
+- 已明确跳过独立4090速度A/B；不得把未知的4090提速幅度写成结果，但这不再阻塞正式恢复训练；
 - 不得在`20260809-112351`或`20260809-132635`下追加更新、续训或重跑；
-- 正式YAML可以记录200,000-step计划，但未获得新的明确promotion前不得启动九组RTX 4090训练或打开最终benchmark；
+- 九组RTX 4090训练已获明确promotion；五个最终benchmark仍必须等九组训练全部冻结后由`codes/run.py`统一打开；
 - RTX 4090只记录训练吞吐和质量，正式Student延迟随后回到统一RTX 4060栈重测；
 - 按Abstract、Introduction、Related Work、Method、Experiments、Conclusion顺序重写论文；
 - 在`/Users/admin/Workspace/Research/DART-SR-Project/paper/figures/`维护draw.io/SVG/PDF论文图源。
@@ -117,7 +118,7 @@ RCAN不是唯一允许的模型，也不能代表全部SR骨干。它先用于�
 ## 8. 新会话建议读取顺序
 
 1. `AGENTS.md`；
-2. `results/autonomous_goals/20260809-084626/goal.md`；
+2. `results/autonomous_goals/20260809-194839/goal.md`；
 3. `docs/PROJECT_STATE.md`（本文）；
 4. `results/autonomous_goals/20260809-112351/final_report.md`（不可改写的EDSR-L有界可行性STOP）；
 5. `results/autonomous_goals/20260803-215622/final_report.md`；

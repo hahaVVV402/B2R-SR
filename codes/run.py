@@ -178,12 +178,17 @@ def execute(plan_path, dry_run=False):
     output_root.mkdir(parents=True, exist_ok=True)
     same_yaml(output_root / 'run_plan.resolved.yml', plan)
     completed = []
+    total_runs = sum(len(configured['seeds']) for configured in plan['runs'])
+    run_index = 0
 
     for configured in plan['runs']:
         scale = int(configured['scale'])
         train_template = option.load(str(resolve(configured['train_opt'])))
         for seed_value in configured['seeds']:
+            run_index += 1
             seed = int(seed_value)
+            print('==== [train {}/{}] X{} seed{} ===='.format(
+                run_index, total_runs, scale, seed), flush=True)
             run_name = 'x{}_seed{}'.format(scale, seed)
             experiment = require_experiment_path(output_root / run_name)
             experiment.mkdir(parents=True, exist_ok=True)
@@ -224,7 +229,9 @@ def execute(plan_path, dry_run=False):
     # Benchmark files are first opened only after every selected checkpoint is frozen.
     preflight(plan_path, phase='test')
 
-    for item in completed:
+    for test_index, item in enumerate(completed, 1):
+        print('==== [test {}/{}] X{} seed{} ===='.format(
+            test_index, total_runs, item['scale'], item['seed']), flush=True)
         test_opt = option.load(str(resolve(item['test_opt'])))
         if int(test_opt['scale']) != item['scale']:
             raise ValueError('{} scale differs from plan'.format(item['test_opt']))

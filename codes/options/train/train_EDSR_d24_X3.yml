@@ -54,6 +54,7 @@ train:
   niter: 200000
   manual_seed: 0
   precision: fp32
+  prefetch_batches: 1
   optimizer:
     type: Adam
     lr: 1.0e-5

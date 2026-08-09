@@ -1,6 +1,8 @@
 import os
+import random
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -11,7 +13,8 @@ import torch
 CODES = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CODES))
 
-from data.strict_paired import pair_directories, read_pair  # noqa: E402
+from data.strict_paired import (DeterministicBatchPrefetcher, pair_directories,
+                                read_pair)  # noqa: E402
 from models import networks  # noqa: E402
 from options import options  # noqa: E402
 from models.archs.EDSR_arch import EDSR, transplant_edsr, uniform_endpoint_indices  # noqa: E402
@@ -52,6 +55,7 @@ class StaticDepthTest(unittest.TestCase):
             self.assertEqual(train['train']['niter'], 200000)
             self.assertEqual(train['validation']['interval'], 5000)
             self.assertEqual(train['checkpoint']['rolling_resume_interval'], 2000)
+            self.assertEqual(train['train']['prefetch_batches'], 1)
             self.assertEqual(test['test_backend'], 'strict_sr')
             self.assertEqual(train['scale'], scale)
             self.assertEqual(test['scale'], scale)
@@ -70,6 +74,33 @@ class StaticDepthTest(unittest.TestCase):
             observed = torch_load_weights(path)
             self.assertTrue(all(torch.equal(restored[key], selected[key]) for key in selected))
             self.assertTrue(all(torch.equal(observed[key], selected[key]) for key in selected))
+
+    def test_prefetch_preserves_committed_rng_sequence_and_errors(self):
+        def load_batch(rng):
+            return tuple(rng.randrange(10000) for _ in range(5))
+
+        reference_rng = random.Random(19)
+        reference = []
+        for _ in range(5):
+            value = load_batch(reference_rng)
+            reference.append((value, reference_rng.getstate()))
+
+        prefetch_rng = random.Random(19)
+        with DeterministicBatchPrefetcher(load_batch, prefetch_rng) as batches:
+            observed = [batches.get() for _ in range(2)]
+            time.sleep(0.02)  # Let the producer advance speculatively.
+        self.assertEqual(observed, reference[:2])
+
+        resumed_rng = random.Random()
+        resumed_rng.setstate(observed[-1][1])
+        self.assertEqual(load_batch(resumed_rng), reference[2][0])
+
+        def fail(_):
+            raise ValueError('prefetch failure')
+
+        with DeterministicBatchPrefetcher(fail, random.Random(1)) as batches:
+            with self.assertRaisesRegex(ValueError, 'prefetch failure'):
+                batches.get()
 
     def test_metrics_and_strict_pairing(self):
         image = np.full((24, 24, 3), 127, dtype=np.uint8)

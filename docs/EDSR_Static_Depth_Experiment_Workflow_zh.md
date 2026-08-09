@@ -50,6 +50,12 @@ python codes/run.py -opt codes/options/run/run_EDSR_d24_smoke_4060.yml
 
 它只运行×4、seed0、10次更新，并在一张recovery数据上走通验证和通用测试。它不打开Set5/Set14/BSD100/Urban100/Manga109，也不产生正式质量结论。
 
+## 确定性训练预取与进度
+
+正式配置启用一个有界后台batch预取，以重叠OpenCV读取/裁剪和GPU计算。生产线程可以提前准备一个batch，但rolling resume只提交主训练线程已经消费的采样RNG状态。RTX 4060验证中，同步与预取以及预取中断恢复的样本、loss、LR和best/last tensor完全一致；排除两步warm-up后的训练step p50由`1593.772141 ms`降至`937.860726 ms`。用户明确选择跳过额外RTX 4090速度A/B并直接promotion；因此4090实际提速幅度尚未测量，但不作为正确性声明。
+
+训练终端每个print interval稳定输出百分比、input wait、GPU step、端到端训练step、images/s和训练ETA；plan入口另外显示`[train i/9]`与`[test i/9]`，避免`tqdm`控制字符污染持久日志。
+
 ## Featurize正式入口
 
 ```bash
@@ -57,7 +63,7 @@ bash scripts/cloud/run_featurize.sh \
   -opt codes/options/run/run_EDSR_d24_formal.yml
 ```
 
-包装脚本负责RTX 4090/仓库/数据/checkpoint检查、执行通用plan、保存状态、生成带内部文件SHA-256的独立tar，并在归档验证后调用`featurize instance release`。正式训练须在4060 smoke与最终review之后另行promotion；准备好脚本不等于已经授权启动1,800,000次更新。
+包装脚本负责RTX 4090/仓库/数据/checkpoint检查、执行通用plan、保存状态、生成带内部文件SHA-256的独立tar，并在归档验证后调用`featurize instance release`。Goal `20260809-194839`记录了用户对九组正式训练和确定性预取的明确promotion；仍须先使用已交付commit并通过脚本自身preflight，且所有九组训练冻结前不得打开最终benchmark。
 
 ## 实验输出
 
