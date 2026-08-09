@@ -14,4 +14,5 @@
 - Added a frozen `scripts/eval/test_edsr_checkpoint.py` entrypoint accepting one checkpoint, scale, and canonical or explicit paired test set. It emits `summary.json`, human-readable `test.log`, per-image CSV/JSONL, and optional SR images.
 - Moved the formal default run tree to `experiments/EDSR_static_depth_20260809-132635/`; the verified tar remains separately under `/home/featurize/work/b2rsr_exports/`.
 - Local synthetic end-to-end testing, exact-source RTX 4060 attempt-04 training smoke, and a real d24-checkpoint standalone CUDA test on a non-benchmark crop passed. Final independent review says `READY TO COMMIT/PUSH`.
-- Pending: selectively commit and push this user-requested package revision, then the user-triggered Featurize run and copy-back audit. Cloud execution has not started; no GPU rental or final benchmark has been opened by the local agent.
+- Selectively committed and pushed the user-requested revision at `a886a719aacccc3265a743aaa01c3606c8c7fd02` (`Add standalone EDSR checkpoint evaluation`).
+- Package revision is complete. Pending: the user-triggered Featurize run and copy-back audit. Cloud execution has not started; no GPU rental or final benchmark has been opened by the local agent.

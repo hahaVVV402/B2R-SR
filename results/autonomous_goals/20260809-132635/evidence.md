@@ -68,4 +68,10 @@ Validation:
 - temporary partial bundle includes the frozen standalone wrapper and passes member-hash/tar verification;
 - `subagents/standalone_test_final_review.md`: **READY TO COMMIT/PUSH**, no blocker.
 
-Pending: selective revision commit/push and the user-triggered Featurize run. No formal cloud quality result exists yet; the standalone CUDA check deliberately used a training crop, not a final benchmark.
+Revision delivery:
+
+- selective source/evidence commit: `a886a719aacccc3265a743aaa01c3606c8c7fd02` (`Add standalone EDSR checkpoint evaluation`);
+- push advanced `origin/main` from `d4a076b` to `a886a71`;
+- unrelated pre-existing worktree changes were not staged.
+
+Pending: the user-triggered Featurize run. No formal cloud quality result exists yet; the standalone CUDA check deliberately used a training crop, not a final benchmark.
