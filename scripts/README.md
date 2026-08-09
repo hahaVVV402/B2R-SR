@@ -15,9 +15,15 @@ results/autonomous_goals/20260809-132635/START_HERE.md
 ```
 
 It checks existing datasets without downloading them, strictly acquires official
-EDSR weights, runs the bounded three-scale recovery matrix, exports a verified
+EDSR weights, runs the bounded three-scale recovery matrix, writes checkpoints and
+quality logs under the repository's ignored `experiments/` tree, exports a verified
 bundle under `/home/featurize/work`, and requests `featurize instance release`.
 Do not use legacy `train_cloud.sh` for the active method.
+
+For a conventional standalone test of one trained EDSR checkpoint, use
+`eval/test_edsr_checkpoint.py` with `--checkpoint`, `--scale`, `--dataset`, and
+`--experiment-dir`. It writes `summary.json`, `test.log`, per-image CSV/JSONL,
+and optional SR images under `<experiment-dir>/test/X<scale>/<dataset>/`.
 
 ## Export a completed cloud run
 

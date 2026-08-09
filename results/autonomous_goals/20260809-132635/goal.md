@@ -19,7 +19,8 @@ Produce a reproducible one-command cloud workflow that:
 3. constructs physical 32→24 Students using the already-verified endpoint-inclusive ordered transplant;
 4. runs exactly 500 FP32 recovery updates for scales ×2/×3/×4 and seeds 0/1/2 with `0.5 L1(Student, Teacher) + 0.5 L1(Student, HR)`;
 5. freezes pure final-step Student checkpoints, then evaluates Teacher, zero-step Student, and all recovered seeds on DIV2K validation plus Set5/Set14/BSD100/Urban100/Manga109 using frozen PSNR-Y/SSIM-Y definitions;
-6. writes all state and evidence under `/home/featurize/work`, creates and verifies one downloadable archive, and calls `featurize instance release` on success or terminal failure.
+6. provides a separate reusable test entrypoint that accepts one checkpoint, scale, and canonical or explicit paired test set, then emits a human-readable log plus JSON/CSV per-image evidence;
+7. writes generated state and evidence first under the repository's ignored `experiments/` tree, creates and verifies a second downloadable archive under `/home/featurize/work`, and calls `featurize instance release` on success or terminal failure.
 
 ## Prospective replacement of the old noisy Gate
 
@@ -53,12 +54,13 @@ results/autonomous_goals/20260809-132635/
 ├── final_report.md
 ├── executed_source/
 │   ├── formal_recovery.py
-│   └── run_featurize.sh
+│   ├── run_featurize.sh
+│   └── test_edsr_checkpoint.py
 ├── remote_artifacts/
 └── subagents/
 ```
 
-Large checkpoints, rolling optimizer states, and cloud output remain ignored under `/home/featurize/work`; only the verified result bundle is copied back before final scientific judgment.
+Large checkpoints, rolling optimizer states, and cloud output remain ignored under `/home/featurize/work/B2R-SR/experiments/EDSR_static_depth_20260809-132635/`; the same evidence is also placed in a verified bundle under `/home/featurize/work/b2rsr_exports/` for copy-back before final scientific judgment. The reusable single-checkpoint entrypoint is `scripts/eval/test_edsr_checkpoint.py`.
 
 ## Phases
 

@@ -24,6 +24,12 @@ Use full-image FP32 evaluation without chop, tiling, or self-ensemble. An OOM is
 
 All generated state goes directly to `/home/featurize/work`. Success and failure paths require a durable status plus a structured bundle whose internal members and sibling SHA are verified before `featurize instance release`. If that verification fails, a raw partial archive is attempted but the instance is deliberately left running with a billing warning for manual inspection. A shutdown fallback after repeated release-command failure is labeled billing-unsafe.
 
-## 2026-08-09 — Final source freeze after review fixes
+## 2026-08-09 — Initial pushed source freeze after review fixes
 
-The first source freeze was exercised by smoke attempt 01. Independent review then required stronger completed-run/evaluation binding, exhaustive data checks, portable checksums, signal forwarding, and exact success-bundle membership. The corrected final freeze is protocol SHA `ae05cb0a...9ce4` and source-manifest SHA `9b5bde66...e51d`; exact-source smoke attempt 02 and final independent review both pass.
+The first source freeze was exercised by smoke attempt 01. Independent review then required stronger completed-run/evaluation binding, exhaustive data checks, portable checksums, signal forwarding, and exact success-bundle membership. The corrected initial pushed freeze was protocol SHA `ae05cb0a...9ce4` and source-manifest SHA `9b5bde66...e51d`; exact-source smoke attempt 02 and independent review passed.
+
+## 2026-08-09 — Separate test entrypoint and two-location artifact policy
+
+The user distinguished training/batch orchestration from the conventional test workflow: one should be able to specify a trained checkpoint, scale, and test set and receive per-image plus aggregate metric logs. Add a reusable strict EDSR test entrypoint producing JSON, CSV and text logs without using results to select a checkpoint.
+
+Generated formal state now lives first under the repository's ignored `experiments/EDSR_static_depth_20260809-132635/`, matching the project's experiment convention. A separately verified tar under `/home/featurize/work/b2rsr_exports/` remains mandatory for portable copy-back. Both paths are persistent. The current replacement freeze is protocol SHA `5c878806...e77c6` and source-manifest SHA `06e41808...0268`; exact-source smoke attempt 04, real-checkpoint standalone test attempt 02, and final independent review pass.

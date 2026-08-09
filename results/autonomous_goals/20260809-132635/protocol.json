@@ -2,7 +2,7 @@
   "schema_version": 1,
   "goal_id": "20260809-132635",
   "frozen": true,
-  "frozen_at_utc": "2026-08-09T06:25:11Z",
+  "frozen_at_utc": "2026-08-09T07:21:43Z",
   "source_manifest": "source_manifest.json",
   "authorization": {
     "basis": "User explicitly approved preparing and pushing a one-command Featurize package for the new EDSR x2/x3/x4 run on 2026-08-09.",
@@ -138,7 +138,9 @@
     "ssim": "per-image SSIM-Y using 11x11 Gaussian window sigma 1.5 and K1=0.01/K2=0.03, then arithmetic mean",
     "confidence_interval": "two-sided 95% Student-t interval across seeds; t(2)=4.3026527299 for n=3",
     "selection": "none; all final-step seeds are reported",
-    "latency_boundary": "RTX 4090 training throughput is descriptive only; final deployment p50/p95 must later be rerun on the common RTX 4060 stack"
+    "latency_boundary": "RTX 4090 training throughput is descriptive only; final deployment p50/p95 must later be rerun on the common RTX 4060 stack",
+    "standalone_test_entrypoint": "scripts/eval/test_edsr_checkpoint.py accepts one checkpoint, scale, and canonical or explicit paired test set",
+    "standalone_outputs": ["summary.json", "test.log", "per_image_metrics.csv", "per-image JSONL", "optional SR images"]
   },
   "cloud": {
     "platform": "Featurize",
@@ -146,7 +148,7 @@
     "repo": "/home/featurize/work/B2R-SR",
     "persistent_root": "/home/featurize/work",
     "ephemeral_data_root": "/home/featurize/data",
-    "default_run_root": "/home/featurize/work/b2rsr_results/20260809-132635",
+    "default_run_root": "/home/featurize/work/B2R-SR/experiments/EDSR_static_depth_20260809-132635",
     "default_export_root": "/home/featurize/work/b2rsr_exports",
     "minimum_persistent_free_bytes": 16106127360,
     "release_default": true,

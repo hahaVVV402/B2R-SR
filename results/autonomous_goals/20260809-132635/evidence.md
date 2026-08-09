@@ -13,7 +13,7 @@ Primary source: `results/autonomous_goals/20260809-112351/final_report.md`.
 
 ## New package evidence
 
-### Frozen package
+### Initial pushed package freeze (superseded before cloud execution)
 
 - Protocol SHA-256: `ae05cb0ada529f41fb2c56af253e3449eb90db90b6f0e10ddb22e05686ca9ce4`.
 - Source-manifest SHA-256: `9b5bde664b958c2b51474cd55a65379fd8e7c071f8025289834b90257db4e51d`.
@@ -35,7 +35,7 @@ Primary source: `results/autonomous_goals/20260809-112351/final_report.md`.
 - peak allocated/reserved: `846277120 / 954204160` bytes;
 - report protocol and source-manifest hashes exactly match the frozen local files.
 
-Attempt 01 used the prior reviewed source freeze and is preserved separately; attempt 02 is the binding package smoke.
+Attempt 01 used the first reviewed source freeze; attempt 02 bound the initially pushed package. Both are preserved, but the user-requested standalone-test revision below supersedes them before cloud execution.
 
 ### Independent reviews
 
@@ -50,4 +50,22 @@ Attempt 01 used the prior reviewed source freeze and is preserved separately; at
 - Post-push `git ls-remote origin refs/heads/main` returned the exact local commit hash.
 - Pre-existing unrelated local worktree changes were neither staged nor committed.
 
-Pending: the user-triggered Featurize run. No formal cloud quality result exists yet.
+### User-requested standalone-test revision
+
+Current frozen hashes:
+
+- protocol: `5c87880633a8f68d4b3aeb7c0e2f92a5f5d3ee1613e9542b6dcabfb34b3e77c6`;
+- source manifest: `06e4180861235afa7c3fe06741e50aa0ba9d813eabd7c5deb6c4c5d1f8260268`;
+- formal runner: `0702f666c6e2dc6ab826440b15d63ccaab4da0ada6a8b2ab144a7124ecd45981`;
+- launcher: `42c7509f40f324e99140c89a9a054eedb72216808fa6006ea8e6e97dfb2b52ef`;
+- standalone wrapper: `e2689dbdf13dd28308f33628ba7fb56658fafd9f3ead3197e5543fa03e3b9222`.
+
+Validation:
+
+- local synthetic d3/n_feats8 checkpoint test on CPU: strict architecture inference/load, paired input, PSNR-Y/SSIM-Y, CSV/JSONL/log/summary, optional image saving, and outside-`experiments/` rejection all PASS;
+- `remote_artifacts/phase0_4060_smoke_attempt04/smoke_report.json` SHA-256 `84083e6ff892b63bc2b1de81df005b4e7399768c86b7cf7783f92f0c5b9700ff`: exact current protocol/source hashes, two finite ×4 CUDA updates, static audit, and strict round-trip PASS;
+- `remote_artifacts/phase0_4060_standalone_test_attempt02/`: real d24 checkpoint SHA `a923f89a...c0d6`, inferred depth 24/width 256/×4, one non-benchmark training crop, PSNR-Y `41.8354488584` and SSIM-Y `0.9666962741`; summary, log, CSV and JSONL agree;
+- temporary partial bundle includes the frozen standalone wrapper and passes member-hash/tar verification;
+- `subagents/standalone_test_final_review.md`: **READY TO COMMIT/PUSH**, no blocker.
+
+Pending: selective revision commit/push and the user-triggered Featurize run. No formal cloud quality result exists yet; the standalone CUDA check deliberately used a training crop, not a final benchmark.

@@ -10,7 +10,7 @@ PROTOCOL="$GOAL_ROOT/protocol.json"
 RUNNER="$SCRIPT_DIR/formal_recovery.py"
 DATA_ROOT="${DATA_ROOT:-/home/featurize/data}"
 CHECKPOINT_DIR="${CHECKPOINT_DIR:-$REPO_ROOT/experiments/pre_trained_models/EDSR}"
-RUN_ROOT="${RUN_ROOT:-/home/featurize/work/b2rsr_results/$GOAL_ID}"
+RUN_ROOT="${RUN_ROOT:-$REPO_ROOT/experiments/EDSR_static_depth_$GOAL_ID}"
 EXPORT_ROOT="${EXPORT_ROOT:-/home/featurize/work/b2rsr_exports}"
 RELEASE="${RELEASE:-1}"
 NOTIFY="${NOTIFY:-1}"
@@ -165,9 +165,30 @@ finalize() {
   release_instance "$status"
   exit "$status"
 }
-trap finalize EXIT
-trap 'handle_signal 130' INT
-trap 'handle_signal 143' TERM
+[[ "$RELEASE" =~ ^[01]$ ]] || { echo "RELEASE 只能是 0 或 1" >&2; exit 2; }
+[[ "$NOTIFY" =~ ^[01]$ ]] || { echo "NOTIFY 只能是 0 或 1" >&2; exit 2; }
+for command in curl git sha256sum stat tar; do
+  command -v "$command" >/dev/null 2>&1 || { echo "ERROR: 缺少命令 $command" >&2; exit 2; }
+done
+choose_python
+resolve_path() {
+  "$PYTHON" - "$1" <<'PY'
+import sys
+from pathlib import Path
+print(Path(sys.argv[1]).expanduser().resolve())
+PY
+}
+REPO_ROOT=$(resolve_path "$REPO_ROOT")
+RUN_ROOT=$(resolve_path "$RUN_ROOT")
+EXPORT_ROOT=$(resolve_path "$EXPORT_ROOT")
+EXPERIMENTS_ROOT=$(resolve_path "$REPO_ROOT/experiments")
+[[ "$REPO_ROOT" == /home/featurize/work/* ]] || { echo "ERROR: 仓库必须位于持久化 /home/featurize/work 下。" >&2; exit 2; }
+[[ "$EXPERIMENTS_ROOT" == "$REPO_ROOT/experiments" ]] || { echo "ERROR: 仓库experiments/不得是符号链接。" >&2; exit 2; }
+[[ "$RUN_ROOT" == "$EXPERIMENTS_ROOT"/* ]] || {
+  echo "ERROR: RUN_ROOT解析后必须位于仓库的experiments/子目录内。" >&2
+  exit 2
+}
+[[ "$EXPORT_ROOT" == /home/featurize/work/* ]] || { echo "ERROR: EXPORT_ROOT 必须位于持久化 /home/featurize/work 下。" >&2; exit 2; }
 
 mkdir -p "$RUN_ROOT" "$CHECKPOINT_DIR" "$EXPORT_ROOT"
 exec > >(tee -a "$RUN_ROOT/launcher.log") 2>&1
@@ -179,15 +200,9 @@ echo "data=$DATA_ROOT"
 echo "run=$RUN_ROOT"
 echo "release=$RELEASE"
 
-[[ "$RELEASE" =~ ^[01]$ ]] || { echo "RELEASE 只能是 0 或 1" >&2; exit 2; }
-[[ "$NOTIFY" =~ ^[01]$ ]] || { echo "NOTIFY 只能是 0 或 1" >&2; exit 2; }
-[[ "$REPO_ROOT" == /home/featurize/work/* ]] || { echo "ERROR: 仓库必须位于持久化 /home/featurize/work 下。" >&2; exit 2; }
-[[ "$RUN_ROOT" == /home/featurize/work/* ]] || { echo "ERROR: RUN_ROOT 必须位于持久化 /home/featurize/work 下。" >&2; exit 2; }
-[[ "$EXPORT_ROOT" == /home/featurize/work/* ]] || { echo "ERROR: EXPORT_ROOT 必须位于持久化 /home/featurize/work 下。" >&2; exit 2; }
-for command in curl git sha256sum stat tar; do
-  command -v "$command" >/dev/null 2>&1 || { echo "ERROR: 缺少命令 $command" >&2; exit 2; }
-done
-choose_python
+trap finalize EXIT
+trap 'handle_signal 130' INT
+trap 'handle_signal 143' TERM
 if [[ "$RELEASE" == "1" ]]; then
   command -v featurize >/dev/null 2>&1 || { echo "ERROR: RELEASE=1 但找不到 featurize CLI。" >&2; exit 2; }
   featurize --help > "$RUN_ROOT/featurize_cli_help.txt" 2>&1 || { echo "ERROR: featurize CLI 不可调用。" >&2; exit 2; }

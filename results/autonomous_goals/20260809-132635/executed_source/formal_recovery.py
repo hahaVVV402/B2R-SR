@@ -10,6 +10,7 @@ physical 24-block Student state_dict.
 from __future__ import annotations
 
 import argparse
+import csv
 import gc
 import hashlib
 import json
@@ -127,7 +128,12 @@ def load_protocol(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     files = manifest.get("files")
     if not isinstance(files, Mapping):
         raise TypeError("Source manifest has no files mapping")
-    required = {"protocol.json", "executed_source/formal_recovery.py", "executed_source/run_featurize.sh"}
+    required = {
+        "protocol.json",
+        "executed_source/formal_recovery.py",
+        "executed_source/run_featurize.sh",
+        "executed_source/test_edsr_checkpoint.py",
+    }
     if not required.issubset(files):
         raise RuntimeError(f"Source manifest omits {sorted(required - set(files))}")
     observed: dict[str, str] = {}
@@ -991,6 +997,7 @@ def evaluate_model(
     device: torch.device,
     output_dir: Path,
     label: str,
+    save_images: bool = False,
 ) -> dict[str, Any]:
     model = model.eval().float().to(device)
     summaries: dict[str, Any] = {}
@@ -999,6 +1006,9 @@ def evaluate_model(
             records: list[dict[str, Any]] = []
             temporary = output_dir / f"x{scale}_{dataset}_{label}.jsonl.tmp"
             final = output_dir / f"x{scale}_{dataset}_{label}.jsonl"
+            image_dir = output_dir / "sr_images" if save_images else None
+            if image_dir is not None:
+                image_dir.mkdir(parents=True, exist_ok=True)
             with temporary.open("w", encoding="utf-8", buffering=1) as handle:
                 for key, hr_path, lr_path in pairs:
                     hr, lr = read_pair(hr_path, lr_path, scale, allow_modcrop=True)
@@ -1016,6 +1026,8 @@ def evaluate_model(
                     }
                     records.append(record)
                     handle.write(json.dumps(record, sort_keys=True, allow_nan=False) + "\n")
+                    if image_dir is not None and not cv2.imwrite(str(image_dir / f"{key}.png"), cv2.cvtColor(output, cv2.COLOR_RGB2BGR)):
+                        raise OSError(f"Failed to save SR image: {image_dir / f'{key}.png'}")
                     del tensor, raw_output, output
             os.replace(temporary, final)
             summaries[dataset] = {
@@ -1028,7 +1040,8 @@ def evaluate_model(
             }
     model = model.cpu()
     del model
-    torch.cuda.empty_cache()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
     return summaries
 
 
@@ -1234,6 +1247,182 @@ def command_evaluate(args: argparse.Namespace) -> None:
         report["failed_at_utc"] = utc_now()
         report["error"] = {"type": type(error).__name__, "message": str(error), "traceback": traceback.format_exc()}
         json_write(output_dir / "evaluation_failure.json", report)
+        raise
+
+
+def infer_edsr_architecture(state: Mapping[str, torch.Tensor]) -> tuple[int, int]:
+    head = state.get("head.0.weight")
+    if head is None or head.ndim != 4 or int(head.shape[1]) != 3:
+        raise RuntimeError("Checkpoint is not a canonical EDSR tensor state")
+    block_indices = sorted(
+        int(match.group(1))
+        for key in state
+        if (match := re.fullmatch(r"body\.(\d+)\.body\.0\.weight", key))
+    )
+    if not block_indices or block_indices != list(range(block_indices[-1] + 1)):
+        raise RuntimeError("Cannot infer a contiguous physical EDSR depth")
+    return len(block_indices), int(head.shape[0])
+
+
+def standalone_test_pairs(args: argparse.Namespace, scale: int) -> tuple[list[tuple[str, Path, Path]], bool]:
+    if bool(args.hr_dir) != bool(args.lr_dir):
+        raise ValueError("--hr-dir and --lr-dir must be supplied together")
+    if args.hr_dir:
+        return pair_directories(Path(args.hr_dir).resolve(), Path(args.lr_dir).resolve(), scale), False
+    data_root = Path(args.data_root).expanduser().resolve()
+    if args.dataset == "DIV2K_valid":
+        hr_dir = data_root / "DIV2K_valid_HR"
+        lr_dir = data_root / "DIV2K_valid_LR_bicubic" / f"X{scale}"
+    elif args.dataset in BENCHMARK_COUNTS:
+        hr_dir = data_root / "SRBenchmarks" / args.dataset / "HR"
+        lr_dir = data_root / "SRBenchmarks" / args.dataset / "LR_bicubic" / f"X{scale}"
+    else:
+        raise ValueError("A custom dataset requires explicit --hr-dir and --lr-dir")
+    pairs = pair_directories(hr_dir, lr_dir, scale)
+    expected = 100 if args.dataset == "DIV2K_valid" else BENCHMARK_COUNTS[args.dataset]
+    if len(pairs) != expected:
+        raise RuntimeError(f"{args.dataset} x{scale} count is {len(pairs)}, expected {expected}")
+    return pairs, True
+
+
+def command_test_checkpoint(args: argparse.Namespace) -> None:
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", args.dataset):
+        raise ValueError("Dataset label may contain only letters, digits, dot, underscore, and hyphen")
+    if int(args.max_images) < 0:
+        raise ValueError("--max-images must be non-negative")
+    scale = int(args.scale)
+    checkpoint = Path(args.checkpoint).expanduser().resolve()
+    if not checkpoint.is_file():
+        raise FileNotFoundError(checkpoint)
+    repository_root = Path(__file__).resolve().parents[4]
+    experiments_root = (repository_root / "experiments").resolve()
+    if experiments_root != repository_root / "experiments":
+        raise RuntimeError("Repository experiments/ must not be a symlink")
+    experiment_dir = Path(args.experiment_dir).expanduser().resolve()
+    if experiments_root not in experiment_dir.parents:
+        raise ValueError(f"--experiment-dir must be a child of {experiments_root}")
+    output_dir = experiment_dir / "test" / f"X{scale}" / args.dataset
+    if output_dir.exists() and any(output_dir.iterdir()):
+        raise FileExistsError(f"Test output already exists; choose a new --experiment-dir: {output_dir}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        pairs, canonical_paths = standalone_test_pairs(args, scale)
+        if args.max_images:
+            pairs = pairs[: int(args.max_images)]
+        if not pairs:
+            raise RuntimeError("No image pairs selected")
+        state = extract_tensor_state(torch_load_weights(checkpoint))
+        if not all(bool(value.isfinite().all()) for value in state.values()):
+            raise FloatingPointError("Checkpoint contains a non-finite tensor")
+        depth, n_feats = infer_edsr_architecture(state)
+        model = EDSR(scale=scale, n_resblocks=depth, n_feats=n_feats)
+        strict_load(model, state)
+        if args.device.startswith("cuda") and not torch.cuda.is_available():
+            raise RuntimeError("CUDA was requested but is unavailable")
+        device = torch.device(args.device)
+        result = evaluate_model(
+            model,
+            {args.dataset: pairs},
+            scale,
+            device,
+            output_dir,
+            "checkpoint",
+            save_images=bool(args.save_images),
+        )[args.dataset]
+        records = result.pop("per_image")
+        csv_path = output_dir / "per_image_metrics.csv"
+        temporary_csv = csv_path.with_suffix(".csv.tmp")
+        with temporary_csv.open("w", encoding="utf-8", newline="") as handle:
+            writer = csv.DictWriter(handle, fieldnames=("image_id", "psnr_y_db", "ssim_y"))
+            writer.writeheader()
+            writer.writerows(records)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_csv, csv_path)
+        log_lines = [
+            f"checkpoint: {checkpoint}",
+            f"checkpoint_sha256: {sha256_file(checkpoint)}",
+            f"model: canonical EDSR, depth={depth}, n_feats={n_feats}, scale=x{scale}",
+            f"dataset: {args.dataset}, images={len(records)}",
+            "",
+        ]
+        log_lines.extend(
+            f"{record['image_id']}: PSNR-Y={float(record['psnr_y_db']):.6f} dB, SSIM-Y={float(record['ssim_y']):.6f}"
+            for record in records
+        )
+        log_lines.extend(
+            (
+                "",
+                f"AVERAGE PSNR-Y: {float(result['mean_psnr_y_db']):.6f} dB",
+                f"AVERAGE SSIM-Y: {float(result['mean_ssim_y']):.6f}",
+            )
+        )
+        log_path = output_dir / "test.log"
+        log_path.write_text("\n".join(log_lines) + "\n", encoding="utf-8")
+        pair_digest = hashlib.sha256()
+        for key, hr_path, lr_path in pairs:
+            for value in (key, str(hr_path), str(lr_path), str(hr_path.stat().st_size), str(lr_path.stat().st_size)):
+                pair_digest.update(value.encode("utf-8"))
+                pair_digest.update(b"\0")
+        summary = {
+            "schema_version": 1,
+            "status": "complete",
+            "completed_at_utc": utc_now(),
+            "checkpoint": {
+                "path": str(checkpoint),
+                "bytes": checkpoint.stat().st_size,
+                "sha256": sha256_file(checkpoint),
+                "tensor_state_sha256": tensor_state_sha256(state),
+            },
+            "model": {"name": "canonical EDSR", "depth": depth, "n_feats": n_feats, "scale": scale},
+            "dataset": {
+                "name": args.dataset,
+                "count": len(pairs),
+                "canonical_repository_paths": canonical_paths,
+                "max_images": int(args.max_images),
+                "ordered_pair_path_size_sha256": pair_digest.hexdigest(),
+            },
+            "metrics": {
+                "protocol": {
+                    "output_quantization": "clamp to [0,255], round, then uint8",
+                    "y_conversion": "Y=(65.738R+129.057G+25.064B)/256+16",
+                    "border_shave_pixels": scale,
+                    "ssim": "11x11 Gaussian window, sigma=1.5, K1=0.01, K2=0.03",
+                },
+                "mean_psnr_y_db": result["mean_psnr_y_db"],
+                "mean_ssim_y": result["mean_ssim_y"],
+            },
+            "runtime": {
+                "device": str(device),
+                "device_name": torch.cuda.get_device_name(device) if device.type == "cuda" else platform.processor(),
+                "torch": torch.__version__,
+            },
+            "outputs": {
+                "directory": str(output_dir),
+                "test_log": str(log_path),
+                "per_image_csv": str(csv_path),
+                "per_image_jsonl": result["per_image_path"],
+                "per_image_jsonl_sha256": result["per_image_sha256"],
+                "sr_images_saved": bool(args.save_images),
+            },
+        }
+        json_write(output_dir / "summary.json", summary)
+        print("\n".join(log_lines), flush=True)
+        print(json.dumps({"status": "complete", "summary": str(output_dir / "summary.json")}, sort_keys=True), flush=True)
+    except Exception as error:
+        json_write(
+            output_dir / "test_failure.json",
+            {
+                "status": "failed",
+                "failed_at_utc": utc_now(),
+                "checkpoint": str(checkpoint),
+                "scale": scale,
+                "dataset": args.dataset,
+                "type": type(error).__name__,
+                "message": str(error),
+                "traceback": traceback.format_exc(),
+            },
+        )
         raise
 
 
@@ -1567,6 +1756,19 @@ def parser() -> argparse.ArgumentParser:
     evaluate.add_argument("--data-root", required=True)
     evaluate.add_argument("--run-root", required=True)
     evaluate.set_defaults(function=command_evaluate)
+
+    test_checkpoint = commands.add_parser("test-checkpoint")
+    test_checkpoint.add_argument("--checkpoint", required=True)
+    test_checkpoint.add_argument("--scale", required=True, type=int, choices=(2, 3, 4))
+    test_checkpoint.add_argument("--dataset", required=True)
+    test_checkpoint.add_argument("--data-root", default="/home/featurize/data")
+    test_checkpoint.add_argument("--hr-dir")
+    test_checkpoint.add_argument("--lr-dir")
+    test_checkpoint.add_argument("--experiment-dir", required=True)
+    test_checkpoint.add_argument("--device", default="cuda:0")
+    test_checkpoint.add_argument("--max-images", type=int, default=0)
+    test_checkpoint.add_argument("--save-images", action="store_true")
+    test_checkpoint.set_defaults(function=command_test_checkpoint)
 
     bundle = commands.add_parser("bundle")
     bundle.add_argument("--protocol", required=True)

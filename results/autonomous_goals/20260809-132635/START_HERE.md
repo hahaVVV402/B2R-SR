@@ -35,9 +35,30 @@ nohup env RELEASE=1 NOTIFY=1 \
 查看日志：
 
 ```bash
-tail -f /home/featurize/work/b2rsr_results/20260809-132635/launcher.log
+tail -f /home/featurize/work/B2R-SR/experiments/EDSR_static_depth_20260809-132635/launcher.log
 ```
 
-默认行为：成功或终止失败后，先在 `/home/featurize/work/b2rsr_exports/` 生成并验证一个 `.tar` 与同名 `.sha256`，再立即执行 `featurize instance release`。若状态文件或带内部哈希清单的结构化归档无法验证，脚本会保留实例并发出计费警告，避免归还前丢失证据。只想调试而不自动归还时，必须在启动前显式设 `RELEASE=0`；此时实例会继续计费。
+训练checkpoint、逐步loss、最终测试指标和完整日志首先写入仓库内（该目录被Git忽略）：
+
+```text
+/home/featurize/work/B2R-SR/experiments/EDSR_static_depth_20260809-132635/
+```
+
+成功或终止失败后，再在 `/home/featurize/work/b2rsr_exports/` 生成并验证一个 `.tar` 与同名 `.sha256`，因此仓库实验目录和独立导出归档两处都有记录。归档验证后才执行 `featurize instance release`。若状态文件或带内部哈希清单的结构化归档无法验证，脚本会保留实例并发出计费警告，避免归还前丢失证据。只想调试而不自动归还时，必须在启动前显式设 `RELEASE=0`；此时实例会继续计费。
 
 脚本可重复执行：已完成且哈希一致的 `{scale,seed}` 会跳过；未完成运行从原子 `resume.pt` 恢复。任何不一致的旧产物会导致停止，而不是覆盖。
+
+## 独立测试单个checkpoint
+
+这与训练后的九任务批量汇总分开。可指定一个训练好的EDSR checkpoint、尺度和测试集：
+
+```bash
+python scripts/eval/test_edsr_checkpoint.py \
+  --checkpoint experiments/EDSR_static_depth_20260809-132635/training/x4/seed0/student_final.pt \
+  --scale 4 \
+  --dataset Set5 \
+  --data-root /home/featurize/data \
+  --experiment-dir experiments/EDSR_d24_x4_seed0
+```
+
+输出在`experiments/EDSR_d24_x4_seed0/test/X4/Set5/`：`summary.json`、`test.log`、逐图`per_image_metrics.csv`与JSONL。需要保存SR图片时附加`--save-images`。自定义测试集可改用成对的`--hr-dir`和`--lr-dir`。

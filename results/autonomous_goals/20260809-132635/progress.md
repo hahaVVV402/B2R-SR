@@ -10,4 +10,8 @@
 - Exact-source RTX 4060 attempt-02 smoke passed two finite CUDA updates, static audit, strict checkpoint round-trip, and finite forward.
 - Three independent review rounds found and then cleared launch blockers; final review says `READY FOR SELECTIVE COMMIT/PUSH`.
 - Selectively committed and pushed the package and maintained state docs: commit `681d0cd14a9eedad7cbb8d63140decbf8010b8de`; GitHub `origin/main` independently resolved to the same hash.
-- Package phase is complete. Pending: the user-triggered Featurize run and copy-back audit. Cloud execution has not started; no GPU rental or final benchmark has been opened by the local agent.
+- The user then clarified that a conventional standalone test entrypoint and repository-local `experiments/` records are required in addition to the formal batch evaluation/export.
+- Added a frozen `scripts/eval/test_edsr_checkpoint.py` entrypoint accepting one checkpoint, scale, and canonical or explicit paired test set. It emits `summary.json`, human-readable `test.log`, per-image CSV/JSONL, and optional SR images.
+- Moved the formal default run tree to `experiments/EDSR_static_depth_20260809-132635/`; the verified tar remains separately under `/home/featurize/work/b2rsr_exports/`.
+- Local synthetic end-to-end testing, exact-source RTX 4060 attempt-04 training smoke, and a real d24-checkpoint standalone CUDA test on a non-benchmark crop passed. Final independent review says `READY TO COMMIT/PUSH`.
+- Pending: selectively commit and push this user-requested package revision, then the user-triggered Featurize run and copy-back audit. Cloud execution has not started; no GPU rental or final benchmark has been opened by the local agent.

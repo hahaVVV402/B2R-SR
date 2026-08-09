@@ -111,7 +111,7 @@ RCAN不是唯一允许的模型，也不能代表全部SR骨干。它先用于�
 
 - Mac仓库：`/Users/admin/Workspace/Research/DART-SR-Project/code/B2R-SR`，负责编辑与编排；本地Python不可假定有Torch/CUDA。
 - RTX 4060 Laptop：`ssh 4060`；远端仓库`/home/jww/WorkSpace/Research/B2R-SR`；Python`/home/jww/miniconda3/envs/b2rsr/bin/python`；`/usr/lib/wsl/lib/nvidia-smi`。用于免费筛查、短pilot和目标延迟。
-- Featurize RTX 4090：仓库与输出在`/home/featurize/work`，数据在`/home/featurize/data`；当前入口见`results/autonomous_goals/20260809-132635/START_HERE.md`。结果验证后用`featurize instance release`归还；最终延迟必须回到统一目标设备完整重测。
+- Featurize RTX 4090：仓库在`/home/featurize/work/B2R-SR`，数据在`/home/featurize/data`；当前训练与批量测试产物先写入仓库内忽略目录`experiments/EDSR_static_depth_20260809-132635/`，再归档到`/home/featurize/work/b2rsr_exports/`。单checkpoint测试入口为`scripts/eval/test_edsr_checkpoint.py`；完整入口见`results/autonomous_goals/20260809-132635/START_HERE.md`。结果验证后用`featurize instance release`归还；最终延迟必须回到统一目标设备完整重测。
 - 完整操作与产物放置规则见根目录`AGENTS.md`；SSH恢复指南见`docs/B2RSR_4060_WSL2_SSH_Setup_zh.md`。
 
 ## 8. 新会话建议读取顺序
