@@ -1,0 +1,18 @@
+# Component-ablation arm -- B: transplant, GT-L1 only
+# Validation-only: execution.skip_test keeps every final benchmark closed.
+name: ABL_armB_gtonly
+output_root: experiments/ABL_armB_gtonly
+
+execution:
+  skip_test: true
+  resume: true
+  fail_fast: true
+
+runs:
+  - scale: 4
+    train_opt: codes/options/train/train_ABL_armB_gtonly.yml
+    seeds: [0, 1, 2]
+
+selection:
+  checkpoint: best_val
+  metric: div2k_valid_psnr_y

@@ -417,11 +417,30 @@ def train_from_options(option_path):
                    teacher_opt['res_scale'], teacher_opt.get('n_colors', 3),
                    teacher_opt.get('rgb_range', 255), scale)
     strict_load(teacher, teacher_state)
-    student, initial_state, source_indices = transplant_edsr(
-        teacher_state, scale, int(teacher_opt['n_resblocks']),
-        int(student_opt['n_resblocks']), int(student_opt['n_feats']),
-        float(student_opt['res_scale']), int(student_opt.get('rgb_range', 255)),
-        (opt.get('initialization') or {}).get('block_mapping', 'uniform_endpoints'))
+    init_opt = opt.get('initialization') or {}
+    init_source = str(init_opt.get('source', 'teacher')).lower()
+    if init_source not in ('teacher', 'random'):
+        raise ValueError(
+            "initialization.source must be 'teacher' or 'random', got "
+            + repr(init_opt.get('source')))
+    if init_source == 'random':
+        # Ablation control: build the target-depth Student with its own default
+        # initialization and copy nothing from the Teacher. The Teacher is still
+        # loaded above so the recovery objective and audits stay identical.
+        student = EDSR(int(student_opt['n_resblocks']), int(student_opt['n_feats']),
+                       float(student_opt['res_scale']),
+                       teacher_opt.get('n_colors', 3),
+                       int(student_opt.get('rgb_range', 255)), scale)
+        initial_state = OrderedDict(
+            (key, value.detach().clone())
+            for key, value in student.state_dict().items())
+        source_indices = []
+    else:
+        student, initial_state, source_indices = transplant_edsr(
+            teacher_state, scale, int(teacher_opt['n_resblocks']),
+            int(student_opt['n_resblocks']), int(student_opt['n_feats']),
+            float(student_opt['res_scale']), int(student_opt.get('rgb_range', 255)),
+            init_opt.get('block_mapping', 'uniform_endpoints'))
     audit = _static_audit(student)
     if not audit['pass']:
         raise AssertionError('Static Student audit failed: {}'.format(audit))

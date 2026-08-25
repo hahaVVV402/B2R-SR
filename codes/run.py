@@ -172,7 +172,9 @@ def preflight(plan_path, phase='training'):
 
 def execute(plan_path, dry_run=False):
     plan = option.load(plan_path)
-    if not bool((plan.get('execution') or {}).get('train_all_before_test', True)):
+    execution = plan.get('execution') or {}
+    skip_test = bool(execution.get('skip_test', False))
+    if not skip_test and not bool(execution.get('train_all_before_test', True)):
         raise ValueError('Formal plan must train every run before testing')
     output_root = require_experiment_path(resolve(plan['output_root']))
     output_root.mkdir(parents=True, exist_ok=True)
@@ -204,7 +206,7 @@ def execute(plan_path, dry_run=False):
                         dry_run=dry_run)
             completed.append({'scale': scale, 'seed': seed,
                               'experiment': experiment,
-                              'test_opt': configured['test_opt']})
+                              'test_opt': configured.get('test_opt')})
 
     if dry_run:
         return {'status': 'dry_run', 'runs': len(completed)}
@@ -225,6 +227,18 @@ def execute(plan_path, dry_run=False):
             raise RuntimeError('Best-validation checkpoint hash changed: {} != {}'.format(
                 observed, recorded))
         item['checkpoint_sha256'] = observed
+
+    if skip_test:
+        # Validation-only study: no final benchmark directory is ever opened.
+        report = {'status': 'complete', 'name': plan['name'],
+                  'run_count': len(completed), 'skip_test': True,
+                  'runs': [{'scale': item['scale'], 'seed': item['seed'],
+                            'experiment': str(item['experiment']),
+                            'best_val_sha256': item['checkpoint_sha256']}
+                           for item in completed]}
+        (output_root / 'run_report.json').write_text(
+            json.dumps(report, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+        return report
 
     # Benchmark files are first opened only after every selected checkpoint is frozen.
     preflight(plan_path, phase='test')
