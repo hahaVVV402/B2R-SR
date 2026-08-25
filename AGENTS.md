@@ -59,6 +59,45 @@ Use a rented RTX 4090 only after local packaging and 4060 feasibility checks pas
 - Stop billing with `featurize instance release`; operating-system shutdown alone is not a confirmed billing stop. Persist success/failure status before requesting release.
 - Active implementation record: `results/autonomous_goals/20260809-084626/goal.md`. The repository-native Featurize entrypoint is `scripts/cloud/run_featurize.sh -opt codes/options/run/run_EDSR_d24_formal.yml`; it is not promoted for formal execution until the RTX 4060 smoke and final review pass. Goal `20260809-132635` is the superseded, unexecuted 500-step package. Legacy `train_cloud.sh` must not launch the active EDSR method.
 
+### Featurize SSH operating procedure
+
+The instance is reachable through the existing `~/.ssh/config` entry, not a bare IP:
+
+```
+Host workspace.featurize.cn
+  HostName workspace.featurize.cn
+  User featurize
+  Port 10742
+```
+
+The port is issued per rental. `Connection closed by <ip> port <n>` means no instance is currently running or the port changed; ask the user for the current SSH command from the Featurize console and update the config rather than guessing ports.
+
+Standard sequence once the user reports an instance is up:
+
+```bash
+# 1. confirm identity, GPU, and free space before doing anything
+ssh workspace.featurize.cn 'hostname; nvidia-smi --query-gpu=name,memory.total --format=csv,noheader; df -h /home/featurize/work | tail -1'
+
+# 2. bring the persistent clone to the reviewed commit (fast-forward only)
+ssh workspace.featurize.cn 'cd /home/featurize/work/B2R-SR && git fetch origin && git status --porcelain=v1 --untracked-files=no && git pull --ff-only origin main && git log --oneline -1'
+
+# 3. launch one goal-owned plan under nohup so an SSH drop cannot kill it;
+#    keep RELEASE=0 for every run except the last
+ssh workspace.featurize.cn 'cd /home/featurize/work/B2R-SR && export SR_DATA_ROOT=/home/featurize/data && \
+  nohup env RELEASE=0 bash scripts/cloud/run_featurize.sh -opt <plan.yml> > /home/featurize/work/<plan>.log 2>&1 & echo started $!'
+
+# 4. poll progress without holding the connection open
+ssh workspace.featurize.cn 'tail -30 /home/featurize/work/<plan>.log; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader'
+```
+
+Rules that apply to every remote session:
+
+- Always `nohup ... &` long runs; never hold training in a foreground SSH channel.
+- `run_featurize.sh` refuses to start when tracked files are dirty, when the GPU is not an RTX 4090, or when less than 15 GiB is free under `/home/featurize/work`. Fix the cause; do not bypass the gate.
+- `RELEASE=0` for intermediate runs, and only the final run releases the instance. After any release, verify with a failed SSH attempt and record the exit status.
+- Never edit files on the instance. Change code locally, push, then `git pull --ff-only`.
+- Copy every report and manifest back into the owning goal before releasing; the instance is not storage.
+
 ## Artifact placement
 
 - Core model/training code: `codes/`
