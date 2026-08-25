@@ -61,33 +61,24 @@ Use a rented RTX 4090 only after local packaging and 4060 feasibility checks pas
 
 ### Featurize SSH operating procedure
 
-The instance is reachable through the existing `~/.ssh/config` entry, not a bare IP:
+Connection details are per rental and are not repository knowledge. The instance host, port, and user come from the Featurize console at the time of the run; ask the user for the current SSH command and use it as given. Any `Host workspace.featurize.cn` block already present in `~/.ssh/config` is a leftover from an earlier rental and its port must not be trusted or reused. `Connection closed by <ip> port <n>` normally means no instance is running or the port has changed, so confirm with the user instead of guessing.
 
-```
-Host workspace.featurize.cn
-  HostName workspace.featurize.cn
-  User featurize
-  Port 10742
-```
-
-The port is issued per rental. `Connection closed by <ip> port <n>` means no instance is currently running or the port changed; ask the user for the current SSH command from the Featurize console and update the config rather than guessing ports.
-
-Standard sequence once the user reports an instance is up:
+Standard sequence once the user provides a live connection:
 
 ```bash
 # 1. confirm identity, GPU, and free space before doing anything
-ssh workspace.featurize.cn 'hostname; nvidia-smi --query-gpu=name,memory.total --format=csv,noheader; df -h /home/featurize/work | tail -1'
+<ssh> 'hostname; nvidia-smi --query-gpu=name,memory.total --format=csv,noheader; df -h /home/featurize/work | tail -1'
 
 # 2. bring the persistent clone to the reviewed commit (fast-forward only)
-ssh workspace.featurize.cn 'cd /home/featurize/work/B2R-SR && git fetch origin && git status --porcelain=v1 --untracked-files=no && git pull --ff-only origin main && git log --oneline -1'
+<ssh> 'cd /home/featurize/work/B2R-SR && git fetch origin && git status --porcelain=v1 --untracked-files=no && git pull --ff-only origin main && git log --oneline -1'
 
 # 3. launch one goal-owned plan under nohup so an SSH drop cannot kill it;
 #    keep RELEASE=0 for every run except the last
-ssh workspace.featurize.cn 'cd /home/featurize/work/B2R-SR && export SR_DATA_ROOT=/home/featurize/data && \
+<ssh> 'cd /home/featurize/work/B2R-SR && export SR_DATA_ROOT=/home/featurize/data && \
   nohup env RELEASE=0 bash scripts/cloud/run_featurize.sh -opt <plan.yml> > /home/featurize/work/<plan>.log 2>&1 & echo started $!'
 
 # 4. poll progress without holding the connection open
-ssh workspace.featurize.cn 'tail -30 /home/featurize/work/<plan>.log; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader'
+<ssh> 'tail -30 /home/featurize/work/<plan>.log; nvidia-smi --query-gpu=utilization.gpu,memory.used --format=csv,noheader'
 ```
 
 Rules that apply to every remote session:
