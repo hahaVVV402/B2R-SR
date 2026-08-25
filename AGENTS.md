@@ -87,7 +87,7 @@ Rules that apply to every remote session:
 - `run_featurize.sh` refuses to start when tracked files are dirty, when the GPU is not an RTX 4090, or when less than 15 GiB is free under `/home/featurize/work`. Fix the cause; do not bypass the gate.
 - `RELEASE=0` for intermediate runs, and only the final run releases the instance. After any release, verify with a failed SSH attempt and record the exit status.
 - Never edit files on the instance. Change code locally, push, then `git pull --ff-only`.
-- Copy every report and manifest back into the owning goal before releasing; the instance is not storage.
+- `/home/featurize/work` persists across releases, so a verified export left there is not lost when billing stops; `/home/featurize/data` is ephemeral. Still copy exports and reports down to the owning goal before releasing, so later analysis never requires renting an instance again.
 
 ## Artifact placement
 
