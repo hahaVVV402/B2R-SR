@@ -32,11 +32,12 @@ REPO = Path(__file__).resolve().parents[2]
 def load_best(arm_stem: str, seed: int) -> dict | None:
     """Return the record with maximum validation PSNR-Y for one run.
 
-    Layout produced by codes/run.py:
-        experiments/ABL_<arm>/x4_seed<N>/validation/history.jsonl
+    Layout produced by codes/run.py, where the validation directory is
+    named 'val' (see val_dir in codes/tasks/static_depth_recovery.py):
+        experiments/ABL_<arm>/x4_seed<N>/val/history.jsonl
     """
     history = (REPO / "experiments" / f"ABL_{arm_stem}"
-               / f"x4_seed{seed}" / "validation" / "history.jsonl")
+               / f"x4_seed{seed}" / "val" / "history.jsonl")
     if not history.is_file():
         return None
     best = None
@@ -46,11 +47,19 @@ def load_best(arm_stem: str, seed: int) -> dict | None:
         if not line:
             continue
         row = json.loads(line)
-        psnr = row.get("psnr_y")
+        # The trainer writes mean_psnr_y_db / mean_ssim_y; normalize to the
+        # short names used downstream so a schema change fails loudly rather
+        # than silently skipping every record.
+        psnr = row.get("mean_psnr_y_db", row.get("psnr_y"))
         if psnr is None:
             continue
+        row = dict(row)
+        row["psnr_y"] = float(psnr)
+        ssim = row.get("mean_ssim_y", row.get("ssim_y"))
+        if ssim is not None:
+            row["ssim_y"] = float(ssim)
         count += 1
-        if best is None or psnr > best["psnr_y"]:
+        if best is None or row["psnr_y"] > best["psnr_y"]:
             best = row
     if best is None:
         return None
