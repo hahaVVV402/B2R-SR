@@ -66,6 +66,7 @@ choose_python() {
   local candidate
   for candidate in "$PYTHON" \
       "$(command -v python 2>/dev/null || true)" \
+      /environment/miniconda3/envs/b2rsr/bin/python \
       /home/featurize/miniconda3/envs/b2rsr/bin/python \
       /home/featurize/miniconda/envs/b2rsr/bin/python \
       "$HOME/miniconda3/envs/b2rsr/bin/python" \

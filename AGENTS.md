@@ -63,6 +63,13 @@ Use a rented RTX 4090 only after local packaging and 4060 feasibility checks pas
 
 Connection details are per rental and are not repository knowledge. The instance host, port, and user come from the Featurize console at the time of the run; ask the user for the current SSH command and use it as given. Any `Host workspace.featurize.cn` block already present in `~/.ssh/config` is a leftover from an earlier rental and its port must not be trusted or reused. `Connection closed by <ip> port <n>` normally means no instance is running or the port has changed, so confirm with the user instead of guessing.
 
+Instance environment, which is stable across rentals:
+
+- Conda lives at `/environment/miniconda3`; the project environment is `b2rsr`, so the interpreter is `/environment/miniconda3/envs/b2rsr/bin/python` (torch with CUDA, plus `cv2`, `numpy`, `yaml`).
+- The default `python` on `PATH` is base conda and has no torch. Never run project code with it; `scripts/cloud/run_featurize.sh` selects the `b2rsr` interpreter itself, and `PYTHON=` only needs to be set if that lookup ever fails.
+- Persistent clone: `/home/featurize/work/B2R-SR`. Datasets: `/home/featurize/data` (`DF2K/DF2K_train_HR_sub`, `DF2K/DF2K_train_LR_bicubic/X<scale>_sub`, `DIV2K_valid_HR`, `DIV2K_valid_LR_bicubic/X<scale>`), so `SR_DATA_ROOT=/home/featurize/data`.
+- `work` is a 50G share. Old `experiments/` output can exhaust it and trip the 15 GiB preflight gate; check `df -h /home/featurize/work` first and only delete run output whose evidence is already archived locally, with the user's approval.
+
 Standard sequence once the user provides a live connection:
 
 ```bash
