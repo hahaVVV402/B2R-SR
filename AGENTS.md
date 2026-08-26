@@ -95,6 +95,9 @@ Rules that apply to every remote session:
 - `RELEASE=0` for intermediate runs, and only the final run releases the instance. After any release, verify with a failed SSH attempt and record the exit status.
 - Never edit files on the instance. Change code locally, push, then `git pull --ff-only`.
 - `/home/featurize/work` persists across releases, so a verified export left there is not lost when billing stops; `/home/featurize/data` is ephemeral. Still copy exports and reports down to the owning goal before releasing, so later analysis never requires renting an instance again.
+- Give every arm `RELEASE=0` and release once as a separate explicit step after all exports are copied down and hash-verified. Letting the final data-producing run also release races the launcher's internal release against external copy-back, and the copy loses.
+- A failed copy-back is not data loss. Check `work` on the next instance before rerunning anything: the export and `experiments/` output are probably still there.
+- Never promote scraped progress-log text to a result. Monitoring snapshots can be truncated or stale; one such snapshot disagreed with the exported value at the fourth decimal. Only hash-verified exports count.
 
 ## Artifact placement
 
